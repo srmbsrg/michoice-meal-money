@@ -1,0 +1,24 @@
+## .NET
+bin/
+obj/
+*.user
+*.suo
+.vs/
+*.db
+*.db-shm
+*.db-wal
+
+## Environment
+appsettings.Development.json
+*.env
+
+## Publish artifacts
+publish/
+*.nupkg
+
+## Rider / JetBrains
+.idea/
+
+## OS
+.DS_Store
+Thumbs.db
