@@ -1,0 +1,18 @@
+version: '3.8'
+
+services:
+  michoice-meal-money:
+    build:
+      context: .          # "context" = the folder Docker can see. Everything in here
+                          # is available to COPY instructions in the Dockerfile.
+                          # `.` means the repo root — the same folder this file lives in.
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"       # host:container — visit http://localhost:8080 in your browser
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - DatabaseProvider=Sqlite
+      # For local dev, Sqlite is fine. The db file is created inside the container.
+      # If you want it to persist across container restarts, add a volume (see below).
+    # volumes:
+    #   - ./data:/app/data   # uncomment + update Data Source path in appsettings if needed
