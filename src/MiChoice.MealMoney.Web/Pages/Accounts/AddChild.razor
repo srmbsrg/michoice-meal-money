@@ -1,0 +1,161 @@
+@page "/children/add"
+@attribute [Authorize]
+@using Microsoft.AspNetCore.Authorization
+@using System.Security.Claims
+@using System.Net.Http.Json
+@inject MealMoneyDbContext Db
+@inject IHttpClientFactory HttpFactory
+@inject AuthenticationStateProvider AuthState
+@inject NavigationManager Nav
+
+<PageTitle>Link a Student — MiMealMoney</PageTitle>
+
+<div class="row justify-content-center">
+    <div class="col-md-7">
+        <a href="/children" class="btn btn-link text-muted ps-0 mb-3">
+            <i class="bi bi-arrow-left me-1"></i>Back to My Children
+        </a>
+        <div class="card balance-card p-4">
+            <h4 class="fw-bold mb-1"><i class="bi bi-person-plus me-2 text-success"></i>Link a Student Account</h4>
+            <p class="text-muted small mb-4">Search by your child's name and school to link their cafeteria account.</p>
+
+            <div class="alert alert-warning small">
+                <i class="bi bi-shield-exclamation me-1"></i>
+                You are responsible for ensuring you are the authorized parent or guardian of the student you are linking.
+            </div>
+
+            <div class="row g-3 mb-3">
+                <div class="col-6">
+                    <label class="form-label fw-semibold">First Name</label>
+                    <input @bind="_firstName" class="form-control" placeholder="Student first name" />
+                </div>
+                <div class="col-6">
+                    <label class="form-label fw-semibold">Last Name</label>
+                    <input @bind="_lastName" class="form-control" placeholder="Student last name" />
+                </div>
+                <div class="col-12">
+                    <label class="form-label fw-semibold">School Name</label>
+                    <input @bind="_schoolName" class="form-control" placeholder="e.g., Lincoln Elementary" />
+                </div>
+            </div>
+
+            <button class="btn btn-success" @onclick="SearchStudents" disabled="@_searching">
+                @if (_searching) { <span class="spinner-border spinner-border-sm me-2"></span> }
+                <i class="bi bi-search me-1"></i>Search
+            </button>
+
+            @if (_searched && !_results.Any())
+            {
+                <div class="alert alert-info mt-4">No students found matching that name and school. Please check the details and try again.</div>
+            }
+
+            @if (_results.Any())
+            {
+                <div class="mt-4">
+                    <h6 class="fw-bold text-muted">Search Results</h6>
+                    @foreach (var r in _results)
+                    {
+                        <div class="border rounded p-3 d-flex justify-content-between align-items-center mb-2">
+                            <div>
+                                <strong>@r.FirstName @r.LastName</strong>
+                                <span class="text-muted ms-2 small">@r.SchoolName · Grade @r.Grade</span>
+                            </div>
+                            <button class="btn btn-sm btn-success" @onclick="() => LinkStudent(r)">
+                                Link
+                            </button>
+                        </div>
+                    }
+                </div>
+            }
+
+            @if (!string.IsNullOrEmpty(_successMsg))
+            {
+                <div class="alert alert-success mt-3">
+                    <i class="bi bi-check-circle me-1"></i>@_successMsg
+                    <a href="/children" class="alert-link ms-2">View My Children →</a>
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    private string _firstName = string.Empty;
+    private string _lastName = string.Empty;
+    private string _schoolName = string.Empty;
+    private bool _searching;
+    private bool _searched;
+    private List<MealMoneyAccount> _results = new();
+    private string? _successMsg;
+    private string? _userId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var auth = await AuthState.GetAuthenticationStateAsync();
+        _userId = auth.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+    }
+
+    private async Task SearchStudents()
+    {
+        _searching = true;
+        _searched = false;
+        _results.Clear();
+
+        // Stub: would call michoice-api GET /api/v1/accounts?name=...
+        // For demo: seed a fake result if name entered
+        await Task.Delay(500);
+        if (!string.IsNullOrWhiteSpace(_firstName) && !string.IsNullOrWhiteSpace(_lastName))
+        {
+            _results.Add(new MealMoneyAccount
+            {
+                StudentId = Guid.NewGuid().ToString("N")[..8],
+                FirstName = _firstName.Trim(),
+                LastName = _lastName.Trim(),
+                SchoolName = string.IsNullOrWhiteSpace(_schoolName) ? "Unknown School" : _schoolName.Trim(),
+                Grade = 3,
+                Balance = 12.50m,
+                LastSyncedAt = DateTime.UtcNow
+            });
+        }
+
+        _searched = true;
+        _searching = false;
+    }
+
+    private async Task LinkStudent(MealMoneyAccount student)
+    {
+        if (_userId == null) return;
+
+        // Check if already linked
+        var existing = Db.HouseholdLinks
+            .Where(h => h.ParentUserId == _userId && h.Account.StudentId == student.StudentId)
+            .Any();
+
+        if (existing)
+        {
+            _successMsg = $"{student.FullName} is already linked to your account.";
+            return;
+        }
+
+        // Persist student account if not already there
+        var dbAcct = Db.MealMoneyAccounts.FirstOrDefault(a => a.StudentId == student.StudentId);
+        if (dbAcct == null)
+        {
+            dbAcct = student;
+            Db.MealMoneyAccounts.Add(dbAcct);
+            await Db.SaveChangesAsync();
+        }
+
+        Db.HouseholdLinks.Add(new HouseholdLink
+        {
+            ParentUserId = _userId,
+            MealMoneyAccountId = dbAcct.Id,
+            IsPrimary = !Db.HouseholdLinks.Any(h => h.ParentUserId == _userId),
+            LinkedAt = DateTime.UtcNow
+        });
+        await Db.SaveChangesAsync();
+
+        _successMsg = $"{student.FullName} has been linked to your account.";
+        _results.Clear();
+    }
+}

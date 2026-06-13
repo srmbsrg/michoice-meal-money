@@ -1,0 +1,49 @@
+@inherits LayoutComponentBase
+
+<div class="mm-wrapper">
+    <nav class="navbar navbar-expand-lg mm-navbar">
+        <div class="container">
+            <a class="navbar-brand mm-brand" href="/">
+                <i class="bi bi-cash-coin me-2"></i>MiMealMoney
+            </a>
+            <button class="navbar-toggler text-white border-white" type="button" data-bs-toggle="collapse" data-bs-target="#mainNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="mainNav">
+                <NavMenu />
+                <div class="ms-auto d-flex align-items-center">
+                    <AuthorizeView>
+                        <Authorized>
+                            <span class="text-white me-3 small">
+                                <i class="bi bi-person-circle me-1"></i>@context.User.Identity?.Name
+                            </span>
+                            <form method="post" action="/auth/logout" class="d-inline">
+                                <AntiforgeryToken />
+                                <button type="submit" class="btn btn-outline-light btn-sm">Sign Out</button>
+                            </form>
+                        </Authorized>
+                        <NotAuthorized>
+                            <a href="/auth/login" class="btn btn-outline-light btn-sm me-2">Sign In</a>
+                            <a href="/auth/register" class="btn btn-light btn-sm mm-btn-register">Create Account</a>
+                        </NotAuthorized>
+                    </AuthorizeView>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <main class="mm-main">
+        <div class="container py-4">
+            @Body
+        </div>
+    </main>
+
+    <footer class="mm-footer">
+        <div class="container">
+            <span class="text-muted small">
+                &copy; @DateTime.Now.Year MiChoice · MiMealMoney &nbsp;|&nbsp;
+                <a href="/privacy" class="text-muted">Privacy</a>
+            </span>
+        </div>
+    </footer>
+</div>

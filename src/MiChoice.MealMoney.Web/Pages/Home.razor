@@ -1,0 +1,82 @@
+@page "/"
+
+<PageTitle>MiMealMoney — Cafeteria Account Management</PageTitle>
+
+<!-- Hero -->
+<div class="py-5 text-center" style="background: linear-gradient(135deg, #f0f7f0 0%, #e8f4e8 100%); border-radius: 16px; margin-bottom: 2rem;">
+    <div class="mb-3" style="font-size: 4rem;">💳</div>
+    <h1 class="fw-bold" style="color: #1a6b3a;">Check balance. Add funds. Done.</h1>
+    <p class="lead text-muted mb-4">
+        Manage your child's school cafeteria account — anytime, from any device.
+    </p>
+    <AuthorizeView>
+        <Authorized>
+            <a href="/children" class="btn btn-success btn-lg me-3 px-4">
+                <i class="bi bi-people me-2"></i>My Children
+            </a>
+            <a href="/pay" class="btn btn-outline-success btn-lg px-4">
+                <i class="bi bi-credit-card me-2"></i>Make a Payment
+            </a>
+        </Authorized>
+        <NotAuthorized>
+            <a href="/auth/login" class="btn btn-success btn-lg me-3 px-4">
+                <i class="bi bi-box-arrow-in-right me-2"></i>Sign In
+            </a>
+            <a href="/auth/register" class="btn btn-outline-success btn-lg px-4">
+                <i class="bi bi-person-plus me-2"></i>Create Account
+            </a>
+        </NotAuthorized>
+    </AuthorizeView>
+</div>
+
+<!-- Feature tiles -->
+<div class="row g-4 mb-5">
+    <div class="col-md-4">
+        <div class="feature-tile h-100">
+            <div class="feature-icon"><i class="bi bi-lightning-charge"></i></div>
+            <h5 class="fw-bold">Instant Deposits</h5>
+            <p class="text-muted mb-0">
+                Add funds with a credit or debit card. Account balances update immediately so your child is never left waiting.
+            </p>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="feature-tile h-100">
+            <div class="feature-icon"><i class="bi bi-bell"></i></div>
+            <h5 class="fw-bold">Balance Alerts</h5>
+            <p class="text-muted mb-0">
+                MiMealMoney watches your balance and alerts you before it runs out — so lunch is always covered.
+            </p>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="feature-tile h-100">
+            <div class="feature-icon"><i class="bi bi-shield-check"></i></div>
+            <h5 class="fw-bold">Secure &amp; Private</h5>
+            <p class="text-muted mb-0">
+                Payments processed securely. Your card information is never stored on our servers.
+            </p>
+        </div>
+    </div>
+</div>
+
+<!-- How it works -->
+<div class="text-center mb-4">
+    <h4 class="fw-bold text-muted">How it works</h4>
+</div>
+<div class="row g-3 align-items-center mb-5">
+    <div class="col-md-3 text-center">
+        <div class="rounded-circle bg-success text-white d-inline-flex align-items-center justify-content-center mb-2" style="width:48px;height:48px;font-weight:700;font-size:1.2rem;">1</div>
+        <p class="small mb-0 fw-semibold">Create your account</p>
+    </div>
+    <div class="col-md-1 text-center text-muted fs-4 d-none d-md-block">→</div>
+    <div class="col-md-3 text-center">
+        <div class="rounded-circle bg-success text-white d-inline-flex align-items-center justify-content-center mb-2" style="width:48px;height:48px;font-weight:700;font-size:1.2rem;">2</div>
+        <p class="small mb-0 fw-semibold">Link your child's school account</p>
+    </div>
+    <div class="col-md-1 text-center text-muted fs-4 d-none d-md-block">→</div>
+    <div class="col-md-3 text-center">
+        <div class="rounded-circle bg-success text-white d-inline-flex align-items-center justify-content-center mb-2" style="width:48px;height:48px;font-weight:700;font-size:1.2rem;">3</div>
+        <p class="small mb-0 fw-semibold">Add funds anytime, instantly</p>
+    </div>
+</div>

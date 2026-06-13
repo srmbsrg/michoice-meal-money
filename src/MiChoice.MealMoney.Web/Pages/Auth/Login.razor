@@ -1,0 +1,83 @@
+@page "/auth/login"
+@using Microsoft.AspNetCore.Identity
+@inject SignInManager<MealMoneyUser> SignIn
+@inject NavigationManager Nav
+
+<PageTitle>Sign In — MiMealMoney</PageTitle>
+
+<div class="row justify-content-center">
+    <div class="col-md-5">
+        <div class="card balance-card p-4">
+            <div class="text-center mb-4">
+                <i class="bi bi-cash-coin fs-1" style="color:#1a6b3a;"></i>
+                <h4 class="fw-bold mt-2">Sign In to MiMealMoney</h4>
+            </div>
+
+            @if (!string.IsNullOrEmpty(_error))
+            {
+                <div class="alert alert-danger">@_error</div>
+            }
+
+            <EditForm Model="_model" OnValidSubmit="HandleLogin">
+                <DataAnnotationsValidator />
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Email</label>
+                    <InputText @bind-Value="_model.Email" class="form-control" type="email" placeholder="parent@email.com" />
+                    <ValidationMessage For="() => _model.Email" class="text-danger small" />
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Password</label>
+                    <InputText @bind-Value="_model.Password" class="form-control" type="password" />
+                    <ValidationMessage For="() => _model.Password" class="text-danger small" />
+                </div>
+                <div class="mb-3 form-check">
+                    <InputCheckbox @bind-Value="_model.RememberMe" class="form-check-input" id="remember" />
+                    <label class="form-check-label" for="remember">Remember me</label>
+                </div>
+                <button type="submit" class="btn btn-success w-100 fw-semibold" disabled="@_busy">
+                    @if (_busy) { <span class="spinner-border spinner-border-sm me-2"></span> }
+                    Sign In
+                </button>
+            </EditForm>
+
+            <hr class="my-4" />
+            <p class="text-center mb-0 small">
+                Don't have an account?
+                <a href="/auth/register" class="text-success fw-semibold">Create one</a>
+            </p>
+        </div>
+    </div>
+</div>
+
+@code {
+    private LoginModel _model = new();
+    private string? _error;
+    private bool _busy;
+
+    [SupplyParameterFromQuery(Name = "returnUrl")]
+    private string? ReturnUrl { get; set; }
+
+    private async Task HandleLogin()
+    {
+        _busy = true;
+        _error = null;
+        var result = await SignIn.PasswordSignInAsync(_model.Email, _model.Password, _model.RememberMe, lockoutOnFailure: false);
+        if (result.Succeeded)
+            Nav.NavigateTo(ReturnUrl ?? "/children");
+        else
+            _error = "Invalid email or password.";
+        _busy = false;
+    }
+
+    private class LoginModel
+    {
+        [System.ComponentModel.DataAnnotations.Required]
+        [System.ComponentModel.DataAnnotations.EmailAddress]
+        public string Email { get; set; } = string.Empty;
+
+        [System.ComponentModel.DataAnnotations.Required]
+        public string Password { get; set; } = string.Empty;
+
+        public bool RememberMe { get; set; }
+    }
+}

@@ -1,0 +1,158 @@
+@page "/children/{Id:int}"
+@attribute [Authorize]
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@using System.Security.Claims
+@inject MealMoneyDbContext Db
+@inject IAgenticInsightService InsightSvc
+@inject AuthenticationStateProvider AuthState
+@inject NavigationManager Nav
+
+<PageTitle>Account Detail — MiMealMoney</PageTitle>
+
+@if (_loading)
+{
+    <div class="text-center py-5"><span class="spinner-border text-success"></span></div>
+}
+else if (_account == null)
+{
+    <div class="alert alert-danger">Account not found or you do not have access.</div>
+}
+else
+{
+    var balClass = _account.IsNegative ? "balance-negative" : _account.IsLowBalance ? "balance-warning" : "balance-positive";
+
+    <div class="d-flex align-items-center mb-4">
+        <a href="/children" class="btn btn-link text-muted ps-0 me-3">
+            <i class="bi bi-arrow-left"></i>
+        </a>
+        <div>
+            <h3 class="fw-bold mb-0">@_account.FullName</h3>
+            <p class="text-muted mb-0 small">@_account.SchoolName · Grade @_account.Grade</p>
+        </div>
+        <a href="/pay?accountId=@_account.Id" class="btn btn-success ms-auto">
+            <i class="bi bi-credit-card me-2"></i>Add Funds
+        </a>
+    </div>
+
+    <div class="row g-4 mb-4">
+        <div class="col-md-4">
+            <div class="card balance-card p-4 text-center">
+                <div class="small text-muted fw-semibold mb-1">CURRENT BALANCE</div>
+                <div class="balance-amount @balClass">@_account.Balance.ToString("C")</div>
+                @if (_account.IsLowBalance)
+                {
+                    <span class="badge bg-warning text-dark mt-2">Low Balance</span>
+                }
+                @if (_account.IsNegative)
+                {
+                    <span class="badge bg-danger mt-2">Negative</span>
+                }
+                <div class="text-muted small mt-2">
+                    Last synced @_account.LastSyncedAt.ToString("MMM d, h:mm tt")
+                </div>
+            </div>
+        </div>
+        <div class="col-md-8">
+            @if (_insight != null)
+            {
+                var panelClass = _insight.Severity switch
+                {
+                    InsightSeverity.Action  => "border-danger",
+                    InsightSeverity.Warning => "border-warning",
+                    _                       => ""
+                };
+                <div class="agent-panel h-100 @panelClass">
+                    <div class="agent-title">
+                        <i class="bi bi-robot me-1"></i>miAgentic · Balance Insight
+                    </div>
+                    <p class="mb-2">@_insight.Summary</p>
+                    @if (_insight.ActionLabel != null && _insight.ActionUrl != null)
+                    {
+                        <a href="@_insight.ActionUrl" class="btn btn-sm btn-success">
+                            @_insight.ActionLabel
+                        </a>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+
+    <!-- Recent Transactions -->
+    <div class="card balance-card p-3">
+        <h5 class="fw-bold mb-3"><i class="bi bi-clock-history me-2 text-success"></i>Recent Transactions</h5>
+        @if (!_transactions.Any())
+        {
+            <p class="text-muted text-center py-3">No transactions yet.</p>
+        }
+        else
+        {
+            <table class="table table-hover">
+                <thead class="table-light">
+                    <tr>
+                        <th>Date</th>
+                        <th>Description</th>
+                        <th class="text-end">Amount</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var tx in _transactions)
+                    {
+                        <tr>
+                            <td class="text-muted small">@tx.InitiatedAt.ToString("MMM d, yyyy")</td>
+                            <td>
+                                Payment
+                                @if (!string.IsNullOrEmpty(tx.Last4))
+                                {
+                                    <span class="text-muted small ms-1">(@tx.CardBrand •••• @tx.Last4)</span>
+                                }
+                            </td>
+                            <td class="text-end fw-semibold balance-positive">+@tx.Amount.ToString("C")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+    </div>
+}
+
+@code {
+    [Parameter] public int Id { get; set; }
+
+    private MealMoneyAccount? _account;
+    private List<PaymentTransaction> _transactions = new();
+    private AgenticInsight? _insight;
+    private bool _loading = true;
+    private string? _userId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var auth = await AuthState.GetAuthenticationStateAsync();
+        _userId = auth.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+
+        if (_userId == null) { _loading = false; return; }
+
+        var linked = await Db.HouseholdLinks
+            .Where(h => h.ParentUserId == _userId && h.MealMoneyAccountId == Id)
+            .Include(h => h.Account)
+            .FirstOrDefaultAsync();
+
+        if (linked == null) { _loading = false; return; }
+
+        _account = linked.Account;
+        _transactions = await Db.PaymentTransactions
+            .Where(t => t.MealMoneyAccountId == Id)
+            .OrderByDescending(t => t.InitiatedAt)
+            .Take(10)
+            .ToListAsync();
+
+        // Build daily-spend sequence from deposits (use as spending proxy for stub)
+        var dailySpend = _transactions
+            .Where(t => t.Status == PaymentStatus.Completed)
+            .Select(t => t.Amount / 5m) // stub: assume $X deposited covers ~5 school days
+            .ToList();
+
+        _insight = await InsightSvc.GetAccountInsightAsync(Id, _account.Balance, dailySpend);
+        _loading = false;
+    }
+}

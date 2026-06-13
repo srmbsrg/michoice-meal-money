@@ -1,0 +1,145 @@
+@page "/auth/register"
+@using Microsoft.AspNetCore.Identity
+@inject UserManager<MealMoneyUser> UserMgr
+@inject SignInManager<MealMoneyUser> SignIn
+@inject NavigationManager Nav
+
+<PageTitle>Create Account — MiMealMoney</PageTitle>
+
+<div class="row justify-content-center">
+    <div class="col-md-6">
+        <div class="card balance-card p-4">
+            <div class="text-center mb-4">
+                <i class="bi bi-person-plus fs-1" style="color:#1a6b3a;"></i>
+                <h4 class="fw-bold mt-2">Create Your Account</h4>
+                <p class="text-muted small">Set up your parent portal to manage cafeteria accounts</p>
+            </div>
+
+            @if (_errors.Any())
+            {
+                <div class="alert alert-danger">
+                    <ul class="mb-0 ps-3">
+                        @foreach (var e in _errors)
+                        {
+                            <li>@e</li>
+                        }
+                    </ul>
+                </div>
+            }
+
+            <EditForm Model="_model" OnValidSubmit="HandleRegister">
+                <DataAnnotationsValidator />
+                <div class="row g-3 mb-3">
+                    <div class="col-6">
+                        <label class="form-label fw-semibold">First Name</label>
+                        <InputText @bind-Value="_model.FirstName" class="form-control" />
+                        <ValidationMessage For="() => _model.FirstName" class="text-danger small" />
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label fw-semibold">Last Name</label>
+                        <InputText @bind-Value="_model.LastName" class="form-control" />
+                        <ValidationMessage For="() => _model.LastName" class="text-danger small" />
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Email Address</label>
+                    <InputText @bind-Value="_model.Email" class="form-control" type="email" />
+                    <ValidationMessage For="() => _model.Email" class="text-danger small" />
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Password</label>
+                    <InputText @bind-Value="_model.Password" class="form-control" type="password" />
+                    <ValidationMessage For="() => _model.Password" class="text-danger small" />
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Confirm Password</label>
+                    <InputText @bind-Value="_model.ConfirmPassword" class="form-control" type="password" />
+                    <ValidationMessage For="() => _model.ConfirmPassword" class="text-danger small" />
+                </div>
+                <div class="mb-4">
+                    <label class="form-label fw-semibold">Preferred Language</label>
+                    <div class="d-flex gap-4">
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="lang" id="lang-en" value="en"
+                                   checked="@(_model.PreferredLanguage == "en")"
+                                   @onchange="@(() => _model.PreferredLanguage = "en")" />
+                            <label class="form-check-label" for="lang-en">🇺🇸 English</label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="lang" id="lang-es" value="es"
+                                   checked="@(_model.PreferredLanguage == "es")"
+                                   @onchange="@(() => _model.PreferredLanguage = "es")" />
+                            <label class="form-check-label" for="lang-es">🇪🇸 Español</label>
+                        </div>
+                    </div>
+                </div>
+                <button type="submit" class="btn btn-success w-100 fw-semibold" disabled="@_busy">
+                    @if (_busy) { <span class="spinner-border spinner-border-sm me-2"></span> }
+                    Create Account
+                </button>
+            </EditForm>
+
+            <hr class="my-3" />
+            <p class="text-center mb-0 small">
+                Already have an account?
+                <a href="/auth/login" class="text-success fw-semibold">Sign in</a>
+            </p>
+        </div>
+    </div>
+</div>
+
+@code {
+    private RegisterModel _model = new();
+    private List<string> _errors = new();
+    private bool _busy;
+
+    private async Task HandleRegister()
+    {
+        _busy = true;
+        _errors.Clear();
+
+        var user = new MealMoneyUser
+        {
+            UserName = _model.Email,
+            Email = _model.Email,
+            FirstName = _model.FirstName,
+            LastName = _model.LastName,
+            PreferredLanguage = _model.PreferredLanguage
+        };
+
+        var result = await UserMgr.CreateAsync(user, _model.Password);
+        if (result.Succeeded)
+        {
+            await SignIn.SignInAsync(user, isPersistent: false);
+            Nav.NavigateTo("/children");
+        }
+        else
+        {
+            _errors = result.Errors.Select(e => e.Description).ToList();
+        }
+        _busy = false;
+    }
+
+    private class RegisterModel
+    {
+        [System.ComponentModel.DataAnnotations.Required]
+        public string FirstName { get; set; } = string.Empty;
+
+        [System.ComponentModel.DataAnnotations.Required]
+        public string LastName { get; set; } = string.Empty;
+
+        [System.ComponentModel.DataAnnotations.Required]
+        [System.ComponentModel.DataAnnotations.EmailAddress]
+        public string Email { get; set; } = string.Empty;
+
+        [System.ComponentModel.DataAnnotations.Required]
+        [System.ComponentModel.DataAnnotations.MinLength(8, ErrorMessage = "Password must be at least 8 characters.")]
+        public string Password { get; set; } = string.Empty;
+
+        [System.ComponentModel.DataAnnotations.Required]
+        [System.ComponentModel.DataAnnotations.Compare(nameof(Password), ErrorMessage = "Passwords do not match.")]
+        public string ConfirmPassword { get; set; } = string.Empty;
+
+        public string PreferredLanguage { get; set; } = "en";
+    }
+}

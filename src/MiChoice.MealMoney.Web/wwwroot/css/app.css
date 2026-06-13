@@ -1,0 +1,117 @@
+:root {
+    --mm-green: #1a6b3a;
+    --mm-green-light: #f0f7f0;
+    --mm-green-border: #1a6b3a;
+    --mm-orange: #e07b00;
+    --mm-red: #c0392b;
+}
+
+/* Layout */
+.mm-wrapper { display: flex; flex-direction: column; min-height: 100vh; }
+.mm-main { flex: 1; }
+.mm-footer { background: #f8f9fa; border-top: 1px solid #dee2e6; padding: 1rem 0; }
+
+/* Navbar */
+.mm-navbar { background-color: var(--mm-green) !important; }
+.mm-brand { color: #fff !important; font-weight: 700; font-size: 1.4rem; letter-spacing: -0.5px; }
+.mm-btn-register { color: var(--mm-green) !important; font-weight: 600; }
+
+/* Balance cards */
+.balance-card {
+    border-radius: 12px;
+    border: none;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    transition: box-shadow 0.2s;
+}
+.balance-card:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.14); }
+
+.balance-amount { font-size: 2.2rem; font-weight: 700; }
+.balance-positive { color: var(--mm-green); }
+.balance-warning  { color: var(--mm-orange); }
+.balance-negative { color: var(--mm-red); }
+
+/* Payment wizard */
+.payment-step {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 1.5rem;
+}
+.payment-step .step-circle {
+    width: 32px; height: 32px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 700; font-size: 0.9rem;
+}
+.step-active   { background: var(--mm-green); color: #fff; }
+.step-done     { background: #28a745; color: #fff; }
+.step-inactive { background: #dee2e6; color: #6c757d; }
+.step-line     { flex: 1; height: 2px; background: #dee2e6; }
+
+/* Preset amount buttons */
+.preset-amount-btn {
+    min-width: 70px;
+    border-color: var(--mm-green) !important;
+    color: var(--mm-green) !important;
+    font-weight: 600;
+}
+.preset-amount-btn:hover, .preset-amount-btn.active {
+    background: var(--mm-green) !important;
+    color: #fff !important;
+}
+
+/* miAgentic panel */
+.agent-panel {
+    background: var(--mm-green-light);
+    border-left: 4px solid var(--mm-green-border);
+    border-radius: 0 8px 8px 0;
+    padding: 1rem 1.25rem;
+}
+.agent-panel .agent-title {
+    font-weight: 600;
+    color: var(--mm-green);
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 0.4rem;
+}
+
+/* Card form stub */
+.card-input-stub {
+    background: #f8f9fa;
+    border: 2px dashed #dee2e6;
+    border-radius: 8px;
+    padding: 1.5rem;
+}
+
+/* Status badges */
+.badge-pending   { background: #ffc107; color: #000; }
+.badge-completed { background: #28a745; color: #fff; }
+.badge-failed    { background: #dc3545; color: #fff; }
+.badge-refunded  { background: #6c757d; color: #fff; }
+
+/* Low-balance indicator dot */
+.balance-dot {
+    display: inline-block;
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    margin-right: 6px;
+}
+.dot-positive { background: var(--mm-green); }
+.dot-warning  { background: var(--mm-orange); }
+.dot-negative { background: var(--mm-red); }
+
+/* Feature tiles (home) */
+.feature-tile {
+    border-radius: 12px;
+    border: none;
+    background: #fff;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.07);
+    padding: 2rem;
+    text-align: center;
+}
+.feature-tile .feature-icon {
+    font-size: 2.5rem;
+    color: var(--mm-green);
+    margin-bottom: 1rem;
+}

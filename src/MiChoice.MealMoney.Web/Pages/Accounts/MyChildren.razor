@@ -1,0 +1,101 @@
+@page "/children"
+@attribute [Authorize]
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@using System.Security.Claims
+@inject MealMoneyDbContext Db
+@inject NavigationManager Nav
+@inject AuthenticationStateProvider AuthState
+
+<PageTitle>My Children — MiMealMoney</PageTitle>
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h3 class="fw-bold mb-0"><i class="bi bi-people me-2 text-success"></i>My Children</h3>
+    <a href="/children/add" class="btn btn-success">
+        <i class="bi bi-plus-circle me-1"></i>Link a Student
+    </a>
+</div>
+
+@if (_loading)
+{
+    <div class="text-center py-5"><span class="spinner-border text-success"></span></div>
+}
+else if (!_accounts.Any())
+{
+    <div class="text-center py-5">
+        <i class="bi bi-emoji-neutral fs-1 text-muted mb-3 d-block"></i>
+        <h5 class="text-muted">No students linked yet</h5>
+        <p class="text-muted">Link your child's school account to get started.</p>
+        <a href="/children/add" class="btn btn-success mt-2">
+            <i class="bi bi-plus-circle me-2"></i>Link a Student
+        </a>
+    </div>
+}
+else
+{
+    <div class="row g-4">
+        @foreach (var acct in _accounts)
+        {
+            var balClass = acct.IsNegative ? "balance-negative" : acct.IsLowBalance ? "balance-warning" : "balance-positive";
+            var dotClass = acct.IsNegative ? "dot-negative" : acct.IsLowBalance ? "dot-warning" : "dot-positive";
+
+            <div class="col-md-6 col-lg-4">
+                <div class="card balance-card h-100 p-3">
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                        <div>
+                            <h5 class="fw-bold mb-0">@acct.FullName</h5>
+                            <p class="text-muted small mb-0">@acct.SchoolName · Grade @acct.Grade</p>
+                        </div>
+                        <span class="balance-dot @dotClass mt-1"></span>
+                    </div>
+                    <div class="my-3 text-center">
+                        <div class="balance-amount @balClass">@acct.Balance.ToString("C")</div>
+                        <div class="small text-muted">Current Balance</div>
+                        @if (acct.IsLowBalance)
+                        {
+                            <span class="badge bg-warning text-dark mt-1">
+                                <i class="bi bi-exclamation-triangle me-1"></i>Low Balance
+                            </span>
+                        }
+                        @if (acct.IsNegative)
+                        {
+                            <span class="badge bg-danger mt-1">
+                                <i class="bi bi-x-circle me-1"></i>Negative Balance
+                            </span>
+                        }
+                    </div>
+                    <div class="d-flex gap-2 mt-auto">
+                        <a href="/pay?accountId=@acct.Id" class="btn btn-success flex-fill fw-semibold">
+                            <i class="bi bi-credit-card me-1"></i>Add Funds
+                        </a>
+                        <a href="/children/@acct.Id" class="btn btn-outline-secondary flex-fill">
+                            View Details
+                        </a>
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+}
+
+@code {
+    private List<MealMoneyAccount> _accounts = new();
+    private bool _loading = true;
+    private string? _userId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var auth = await AuthState.GetAuthenticationStateAsync();
+        _userId = auth.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+
+        if (_userId != null)
+        {
+            _accounts = await Db.HouseholdLinks
+                .Where(h => h.ParentUserId == _userId)
+                .Include(h => h.Account)
+                .Select(h => h.Account)
+                .ToListAsync();
+        }
+        _loading = false;
+    }
+}
