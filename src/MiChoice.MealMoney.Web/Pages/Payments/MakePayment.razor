@@ -1,0 +1,332 @@
+@page "/pay"
+@attribute [Authorize]
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@using System.Security.Claims
+@inject MealMoneyDbContext Db
+@inject IPaymentService PaymentSvc
+@inject AuthenticationStateProvider AuthState
+@inject NavigationManager Nav
+
+<PageTitle>Make a Payment — MiMealMoney</PageTitle>
+
+<div class="row justify-content-center">
+    <div class="col-md-7">
+        <h3 class="fw-bold mb-4"><i class="bi bi-credit-card me-2 text-success"></i>Make a Payment</h3>
+
+        <!-- Step indicator -->
+        <div class="payment-step mb-4">
+            <div class="step-circle @StepClass(1)">1</div>
+            <span class="small fw-semibold @(_step >= 1 ? "text-success" : "text-muted")">Amount &amp; Child</span>
+            <div class="step-line"></div>
+            <div class="step-circle @StepClass(2)">2</div>
+            <span class="small fw-semibold @(_step >= 2 ? "text-success" : "text-muted")">Card Details</span>
+            <div class="step-line"></div>
+            <div class="step-circle @StepClass(3)">@if (_step > 3) { <i class="bi bi-check"></i> } else { <span>3</span> }</div>
+            <span class="small fw-semibold @(_step >= 3 ? "text-success" : "text-muted")">Confirm</span>
+        </div>
+
+        @if (_step == 1)
+        {
+            <div class="card balance-card p-4">
+                <h5 class="fw-bold mb-3">Select Child &amp; Amount</h5>
+                @if (_accounts.Any())
+                {
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Child</label>
+                        <select class="form-select" @bind="_selectedAccountId">
+                            <option value="0">-- Select a child --</option>
+                            @foreach (var a in _accounts)
+                            {
+                                <option value="@a.Id">@a.FullName (@a.SchoolName) — Balance: @a.Balance.ToString("C")</option>
+                            }
+                        </select>
+                    </div>
+                }
+                else
+                {
+                    <div class="alert alert-info">No students linked. <a href="/children/add">Link a student first.</a></div>
+                }
+
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Amount</label>
+                    <div class="d-flex gap-2 mb-2 flex-wrap">
+                        @foreach (var preset in new[] { 10m, 20m, 50m })
+                        {
+                            <button class="btn preset-amount-btn @(_amount == preset && !_customMode ? "active" : "")"
+                                    @onclick="() => SelectPreset(preset)">
+                                @preset.ToString("C0")
+                            </button>
+                        }
+                        <button class="btn preset-amount-btn @(_customMode ? "active" : "")"
+                                @onclick="() => { _customMode = true; _amount = 0; }">
+                            Other
+                        </button>
+                    </div>
+                    @if (_customMode)
+                    {
+                        <div class="input-group">
+                            <span class="input-group-text">$</span>
+                            <input type="number" class="form-control" min="5" max="200" step="1"
+                                   @bind="_amount" placeholder="Enter amount (5–200)" />
+                        </div>
+                    }
+                    @if (!string.IsNullOrEmpty(_step1Error))
+                    {
+                        <div class="text-danger small mt-1">@_step1Error</div>
+                    }
+                </div>
+
+                <button class="btn btn-success w-100 fw-semibold" @onclick="GoToStep2">
+                    Continue <i class="bi bi-arrow-right ms-1"></i>
+                </button>
+            </div>
+        }
+
+        @if (_step == 2)
+        {
+            <div class="card balance-card p-4">
+                <h5 class="fw-bold mb-3">Card Details</h5>
+                <div class="card-input-stub mb-3">
+                    <div class="text-muted small fw-semibold mb-3">
+                        <i class="bi bi-lock me-1"></i>Secure payment powered by Stripe
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold small">Card Number</label>
+                        <input type="text" class="form-control" placeholder="1234 5678 9012 3456"
+                               maxlength="19" @bind="_cardNumber" />
+                    </div>
+                    <div class="row g-3">
+                        <div class="col-6">
+                            <label class="form-label fw-semibold small">Expiry (MM/YY)</label>
+                            <input type="text" class="form-control" placeholder="MM/YY"
+                                   maxlength="5" @bind="_cardExpiry" />
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label fw-semibold small">CVC</label>
+                            <input type="text" class="form-control" placeholder="CVC"
+                                   maxlength="4" @bind="_cardCvc" />
+                        </div>
+                    </div>
+                    @if (!string.IsNullOrEmpty(_step2Error))
+                    {
+                        <div class="text-danger small mt-2">@_step2Error</div>
+                    }
+                </div>
+                <div class="d-flex gap-2">
+                    <button class="btn btn-outline-secondary" @onclick="() => _step = 1">
+                        <i class="bi bi-arrow-left me-1"></i>Back
+                    </button>
+                    <button class="btn btn-success flex-fill fw-semibold" @onclick="GoToStep3">
+                        Review Payment <i class="bi bi-arrow-right ms-1"></i>
+                    </button>
+                </div>
+            </div>
+        }
+
+        @if (_step == 3)
+        {
+            var selectedAccount = _accounts.FirstOrDefault(a => a.Id == _selectedAccountId);
+            <div class="card balance-card p-4">
+                <h5 class="fw-bold mb-3">Confirm Payment</h5>
+                <table class="table table-borderless mb-3">
+                    <tbody>
+                        <tr>
+                            <td class="text-muted">Child</td>
+                            <td class="fw-semibold">@selectedAccount?.FullName</td>
+                        </tr>
+                        <tr>
+                            <td class="text-muted">School</td>
+                            <td>@selectedAccount?.SchoolName</td>
+                        </tr>
+                        <tr>
+                            <td class="text-muted">Amount</td>
+                            <td class="fw-bold fs-5 balance-positive">@_amount.ToString("C")</td>
+                        </tr>
+                        <tr>
+                            <td class="text-muted">Card</td>
+                            <td>•••• @(_cardNumber.Length >= 4 ? _cardNumber[^4..] : "????") (Expires @_cardExpiry)</td>
+                        </tr>
+                    </tbody>
+                </table>
+                @if (!string.IsNullOrEmpty(_payError))
+                {
+                    <div class="alert alert-danger">@_payError</div>
+                }
+                <div class="d-flex gap-2">
+                    <button class="btn btn-outline-secondary" @onclick="() => _step = 2">
+                        <i class="bi bi-arrow-left me-1"></i>Back
+                    </button>
+                    <button class="btn btn-success flex-fill fw-semibold" @onclick="ConfirmPayment" disabled="@_processing">
+                        @if (_processing) { <span class="spinner-border spinner-border-sm me-2"></span> }
+                        <i class="bi bi-shield-check me-1"></i>Confirm Payment
+                    </button>
+                </div>
+            </div>
+        }
+
+        @if (_step == 4)
+        {
+            <!-- Success screen -->
+            <div class="card balance-card p-5 text-center">
+                <div class="mb-3" style="font-size:4rem;color:#1a6b3a;">✅</div>
+                <h4 class="fw-bold text-success">Payment Successful!</h4>
+                <p class="text-muted">@_amount.ToString("C") has been added to @(_successChildName)'s account.</p>
+                <div class="bg-light rounded p-3 d-inline-block mb-4 text-start">
+                    <div class="small text-muted">Confirmation</div>
+                    <div class="fw-semibold small font-monospace">@_confirmationId</div>
+                </div>
+                <div class="d-flex gap-3 justify-content-center">
+                    <a href="/pay" class="btn btn-outline-success" @onclick="ResetForm">Make Another Payment</a>
+                    <a href="/children" class="btn btn-success">Back to My Children</a>
+                </div>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    [SupplyParameterFromQuery(Name = "accountId")]
+    private int? AccountIdParam { get; set; }
+
+    private int _step = 1;
+    private List<MealMoneyAccount> _accounts = new();
+    private int _selectedAccountId;
+    private decimal _amount;
+    private bool _customMode;
+    private string _cardNumber = string.Empty;
+    private string _cardExpiry = string.Empty;
+    private string _cardCvc = string.Empty;
+    private string? _step1Error;
+    private string? _step2Error;
+    private string? _payError;
+    private bool _processing;
+    private string? _successChildName;
+    private string? _confirmationId;
+    private string? _userId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var auth = await AuthState.GetAuthenticationStateAsync();
+        _userId = auth.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+
+        if (_userId != null)
+        {
+            _accounts = await Db.HouseholdLinks
+                .Where(h => h.ParentUserId == _userId)
+                .Include(h => h.Account)
+                .Select(h => h.Account)
+                .ToListAsync();
+        }
+
+        if (AccountIdParam.HasValue && AccountIdParam.Value > 0)
+            _selectedAccountId = AccountIdParam.Value;
+    }
+
+    private void SelectPreset(decimal amount)
+    {
+        _amount = amount;
+        _customMode = false;
+    }
+
+    private void GoToStep2()
+    {
+        _step1Error = null;
+        if (_selectedAccountId == 0) { _step1Error = "Please select a child."; return; }
+        if (_amount < 5)             { _step1Error = "Minimum payment is $5.00."; return; }
+        if (_amount > 200)           { _step1Error = "Maximum payment is $200.00 per transaction."; return; }
+        _step = 2;
+    }
+
+    private void GoToStep3()
+    {
+        _step2Error = null;
+        var cn = _cardNumber.Replace(" ", "").Trim();
+        if (cn.Length < 12)          { _step2Error = "Please enter a valid card number."; return; }
+        if (string.IsNullOrWhiteSpace(_cardExpiry) || !_cardExpiry.Contains('/'))
+                                     { _step2Error = "Please enter a valid expiry (MM/YY)."; return; }
+        if (string.IsNullOrWhiteSpace(_cardCvc) || _cardCvc.Length < 3)
+                                     { _step2Error = "Please enter a valid CVC."; return; }
+        _step = 3;
+    }
+
+    private async Task ConfirmPayment()
+    {
+        _processing = true;
+        _payError = null;
+
+        try
+        {
+            var expiryParts = _cardExpiry.Split('/');
+            var request = new PaymentRequest(
+                Amount: _amount,
+                ParentUserId: _userId!,
+                MealMoneyAccountId: _selectedAccountId,
+                CardNumber: _cardNumber.Replace(" ", ""),
+                ExpiryMonth: expiryParts[0],
+                ExpiryYear: expiryParts.Length > 1 ? expiryParts[1] : "",
+                Cvc: _cardCvc
+            );
+
+            // Create pending transaction
+            var tx = new PaymentTransaction
+            {
+                MealMoneyAccountId = _selectedAccountId,
+                ParentUserId = _userId!,
+                Amount = _amount,
+                Status = PaymentStatus.Pending,
+                InitiatedAt = DateTime.UtcNow
+            };
+            Db.PaymentTransactions.Add(tx);
+            await Db.SaveChangesAsync();
+
+            // Process payment (stub)
+            var result = await PaymentSvc.ProcessAsync(request);
+
+            tx.Status = result.Status;
+            tx.StripePaymentIntentId = result.PaymentIntentId;
+            tx.Last4 = result.Last4;
+            tx.CardBrand = result.CardBrand;
+            tx.CompletedAt = result.Success ? DateTime.UtcNow : null;
+            tx.FailureReason = result.ErrorMessage;
+
+            if (result.Success)
+            {
+                var acct = await Db.MealMoneyAccounts.FindAsync(_selectedAccountId);
+                if (acct != null) acct.Balance += _amount;
+                _successChildName = acct?.FullName;
+            }
+
+            await Db.SaveChangesAsync();
+
+            if (result.Success)
+            {
+                _confirmationId = result.PaymentIntentId;
+                _step = 4;
+            }
+            else
+            {
+                _payError = result.ErrorMessage ?? "Payment failed. Please try again.";
+            }
+        }
+        catch (Exception ex)
+        {
+            _payError = $"An error occurred: {ex.Message}";
+        }
+
+        _processing = false;
+    }
+
+    private void ResetForm()
+    {
+        _step = 1;
+        _amount = 0;
+        _customMode = false;
+        _cardNumber = _cardExpiry = _cardCvc = string.Empty;
+        _selectedAccountId = 0;
+        _payError = _step1Error = _step2Error = null;
+    }
+
+    private string StepClass(int step) =>
+        _step > step ? "step-done" : _step == step ? "step-active" : "step-inactive";
+}

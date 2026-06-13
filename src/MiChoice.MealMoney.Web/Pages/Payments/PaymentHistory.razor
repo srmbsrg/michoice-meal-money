@@ -1,0 +1,129 @@
+@page "/history"
+@attribute [Authorize]
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@using System.Security.Claims
+@inject MealMoneyDbContext Db
+@inject AuthenticationStateProvider AuthState
+
+<PageTitle>Transaction History — MiMealMoney</PageTitle>
+
+<h3 class="fw-bold mb-4"><i class="bi bi-clock-history me-2 text-success"></i>Transaction History</h3>
+
+@if (_loading)
+{
+    <div class="text-center py-5"><span class="spinner-border text-success"></span></div>
+}
+else if (!_rows.Any())
+{
+    <div class="text-center py-5 text-muted">
+        <i class="bi bi-receipt fs-1 d-block mb-3"></i>
+        No transactions yet. <a href="/pay" class="text-success">Make your first payment →</a>
+    </div>
+}
+else
+{
+    <div class="card balance-card p-3">
+        <table class="table table-hover align-middle">
+            <thead class="table-light">
+                <tr>
+                    <th>Date</th>
+                    <th>Student</th>
+                    <th>Amount</th>
+                    <th>Status</th>
+                    <th>Card</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var row in _rows.Skip((_page - 1) * PageSize).Take(PageSize))
+                {
+                    <tr>
+                        <td class="text-muted small">@row.Tx.InitiatedAt.ToString("MMM d, yyyy h:mm tt")</td>
+                        <td>
+                            <strong>@row.Account.FullName</strong>
+                            <div class="text-muted small">@row.Account.SchoolName</div>
+                        </td>
+                        <td class="fw-bold balance-positive">+@row.Tx.Amount.ToString("C")</td>
+                        <td>
+                            <span class="badge @StatusBadge(row.Tx.Status)">@row.Tx.Status</span>
+                        </td>
+                        <td class="text-muted small">
+                            @if (!string.IsNullOrEmpty(row.Tx.Last4))
+                            {
+                                @row.Tx.CardBrand <span>•••• @row.Tx.Last4</span>
+                            }
+                            else
+                            {
+                                <span>—</span>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+
+        <!-- Pagination -->
+        @if (_totalPages > 1)
+        {
+            <nav>
+                <ul class="pagination justify-content-center mb-0">
+                    <li class="page-item @(_page == 1 ? "disabled" : "")">
+                        <button class="page-link" @onclick="() => _page--">‹ Prev</button>
+                    </li>
+                    @for (int i = 1; i <= _totalPages; i++)
+                    {
+                        var pg = i;
+                        <li class="page-item @(_page == pg ? "active" : "")">
+                            <button class="page-link" @onclick="() => _page = pg">@pg</button>
+                        </li>
+                    }
+                    <li class="page-item @(_page == _totalPages ? "disabled" : "")">
+                        <button class="page-link" @onclick="() => _page++">Next ›</button>
+                    </li>
+                </ul>
+            </nav>
+        }
+    </div>
+}
+
+@code {
+    private const int PageSize = 20;
+    private List<(PaymentTransaction Tx, MealMoneyAccount Account)> _rows = new();
+    private bool _loading = true;
+    private int _page = 1;
+    private int _totalPages = 1;
+    private string? _userId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var auth = await AuthState.GetAuthenticationStateAsync();
+        _userId = auth.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+
+        if (_userId != null)
+        {
+            var linkedIds = await Db.HouseholdLinks
+                .Where(h => h.ParentUserId == _userId)
+                .Select(h => h.MealMoneyAccountId)
+                .ToListAsync();
+
+            var txs = await Db.PaymentTransactions
+                .Where(t => linkedIds.Contains(t.MealMoneyAccountId))
+                .Include(t => t.Account)
+                .OrderByDescending(t => t.InitiatedAt)
+                .ToListAsync();
+
+            _rows = txs.Select(t => (t, t.Account)).ToList();
+            _totalPages = (int)Math.Ceiling(_rows.Count / (double)PageSize);
+            if (_totalPages < 1) _totalPages = 1;
+        }
+        _loading = false;
+    }
+
+    private string StatusBadge(PaymentStatus s) => s switch
+    {
+        PaymentStatus.Completed => "badge-completed",
+        PaymentStatus.Failed    => "badge-failed",
+        PaymentStatus.Refunded  => "badge-refunded",
+        _                       => "badge-pending"
+    };
+}

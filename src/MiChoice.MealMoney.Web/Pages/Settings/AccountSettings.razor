@@ -1,0 +1,203 @@
+@page "/settings"
+@attribute [Authorize]
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Identity
+@using Microsoft.EntityFrameworkCore
+@using System.Security.Claims
+@inject UserManager<MealMoneyUser> UserMgr
+@inject MealMoneyDbContext Db
+@inject AuthenticationStateProvider AuthState
+
+<PageTitle>Account Settings — MiMealMoney</PageTitle>
+
+<h3 class="fw-bold mb-4"><i class="bi bi-gear me-2 text-success"></i>Account Settings</h3>
+
+@if (_loading)
+{
+    <div class="text-center py-5"><span class="spinner-border text-success"></span></div>
+}
+else
+{
+    <div class="row g-4">
+        <!-- Profile -->
+        <div class="col-md-6">
+            <div class="card balance-card p-4">
+                <h5 class="fw-bold mb-3"><i class="bi bi-person me-2"></i>Profile</h5>
+                @if (!string.IsNullOrEmpty(_profileMsg))
+                {
+                    <div class="alert alert-success py-2 small">@_profileMsg</div>
+                }
+                <div class="row g-3 mb-3">
+                    <div class="col-6">
+                        <label class="form-label fw-semibold small">First Name</label>
+                        <input class="form-control" @bind="_firstName" />
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label fw-semibold small">Last Name</label>
+                        <input class="form-control" @bind="_lastName" />
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-semibold small">Email Address</label>
+                    <input class="form-control" value="@_email" readonly disabled />
+                    <div class="form-text">Email cannot be changed here.</div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-semibold small">Preferred Language</label>
+                    <div class="d-flex gap-4">
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="lang" id="lang-en"
+                                   checked="@(_language == "en")"
+                                   @onchange="@(() => _language = "en")" />
+                            <label class="form-check-label" for="lang-en">🇺🇸 English</label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="lang" id="lang-es"
+                                   checked="@(_language == "es")"
+                                   @onchange="@(() => _language = "es")" />
+                            <label class="form-check-label" for="lang-es">🇪🇸 Español</label>
+                        </div>
+                    </div>
+                </div>
+                <button class="btn btn-success" @onclick="SaveProfile" disabled="@_savingProfile">
+                    @if (_savingProfile) { <span class="spinner-border spinner-border-sm me-2"></span> }
+                    Save Profile
+                </button>
+            </div>
+        </div>
+
+        <!-- Notification Preferences -->
+        <div class="col-md-6">
+            <div class="card balance-card p-4">
+                <h5 class="fw-bold mb-3"><i class="bi bi-bell me-2"></i>Notification Preferences</h5>
+                <p class="text-muted small mb-3">Choose how you want to be notified about your children's accounts.</p>
+                <div class="form-check form-switch mb-3">
+                    <input class="form-check-input" type="checkbox" id="notif-email" @bind="_emailNotif" />
+                    <label class="form-check-label" for="notif-email">
+                        <i class="bi bi-envelope me-1"></i>Email notifications
+                    </label>
+                    <div class="text-muted small">Low balance alerts and payment confirmations</div>
+                </div>
+                <div class="form-check form-switch mb-4">
+                    <input class="form-check-input" type="checkbox" id="notif-text" @bind="_textNotif" />
+                    <label class="form-check-label" for="notif-text">
+                        <i class="bi bi-chat-dots me-1"></i>Text / SMS notifications
+                    </label>
+                    <div class="text-muted small">Urgent low-balance alerts (coming soon)</div>
+                </div>
+                <button class="btn btn-success" @onclick="SaveNotifications">Save Preferences</button>
+            </div>
+        </div>
+
+        <!-- Low Balance Thresholds -->
+        <div class="col-12">
+            <div class="card balance-card p-4">
+                <h5 class="fw-bold mb-3"><i class="bi bi-exclamation-triangle me-2 text-warning"></i>Low Balance Thresholds</h5>
+                <p class="text-muted small mb-3">Set the balance amount at which you want to receive a low-balance alert for each child.</p>
+                @if (!_accounts.Any())
+                {
+                    <p class="text-muted">No students linked yet. <a href="/children/add" class="text-success">Link a student</a> to configure thresholds.</p>
+                }
+                else
+                {
+                    <div class="row g-3">
+                        @foreach (var acct in _accounts)
+                        {
+                            <div class="col-md-4">
+                                <div class="border rounded p-3">
+                                    <div class="fw-semibold mb-1">@acct.FullName</div>
+                                    <div class="text-muted small mb-2">@acct.SchoolName</div>
+                                    <div class="input-group input-group-sm">
+                                        <span class="input-group-text">$</span>
+                                        <input type="number" class="form-control" min="1" max="50" step="0.5"
+                                               value="@acct.LowBalanceThreshold"
+                                               @onchange="e => UpdateThreshold(acct, e)" />
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                    <button class="btn btn-success mt-3" @onclick="SaveThresholds">Save Thresholds</button>
+                }
+                @if (!string.IsNullOrEmpty(_thresholdMsg))
+                {
+                    <div class="alert alert-success py-2 small mt-3">@_thresholdMsg</div>
+                }
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private string _firstName = string.Empty;
+    private string _lastName = string.Empty;
+    private string _email = string.Empty;
+    private string _language = "en";
+    private bool _emailNotif = true;
+    private bool _textNotif;
+    private bool _loading = true;
+    private bool _savingProfile;
+    private string? _profileMsg;
+    private string? _thresholdMsg;
+    private List<MealMoneyAccount> _accounts = new();
+    private string? _userId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var auth = await AuthState.GetAuthenticationStateAsync();
+        _userId = auth.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+
+        if (_userId != null)
+        {
+            var user = await UserMgr.FindByIdAsync(_userId);
+            if (user != null)
+            {
+                _firstName = user.FirstName;
+                _lastName = user.LastName;
+                _email = user.Email ?? string.Empty;
+                _language = user.PreferredLanguage;
+            }
+
+            _accounts = await Db.HouseholdLinks
+                .Where(h => h.ParentUserId == _userId)
+                .Include(h => h.Account)
+                .Select(h => h.Account)
+                .ToListAsync();
+        }
+        _loading = false;
+    }
+
+    private async Task SaveProfile()
+    {
+        if (_userId == null) return;
+        _savingProfile = true;
+        _profileMsg = null;
+        var user = await UserMgr.FindByIdAsync(_userId);
+        if (user != null)
+        {
+            user.FirstName = _firstName;
+            user.LastName = _lastName;
+            user.PreferredLanguage = _language;
+            await UserMgr.UpdateAsync(user);
+            _profileMsg = "Profile saved.";
+        }
+        _savingProfile = false;
+    }
+
+    private void SaveNotifications()
+    {
+        // Stub: persist to user claims or a settings table (not wired)
+    }
+
+    private void UpdateThreshold(MealMoneyAccount acct, ChangeEventArgs e)
+    {
+        if (decimal.TryParse(e.Value?.ToString(), out var val))
+            acct.LowBalanceThreshold = val;
+    }
+
+    private async Task SaveThresholds()
+    {
+        await Db.SaveChangesAsync();
+        _thresholdMsg = "Thresholds saved.";
+    }
+}
