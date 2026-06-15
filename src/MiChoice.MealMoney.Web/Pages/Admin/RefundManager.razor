@@ -1,0 +1,428 @@
+@page "/admin/refunds"
+@attribute [Authorize(Roles = "Admin")]
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@using System.Security.Claims
+@inject MealMoneyDbContext Db
+@inject AuthenticationStateProvider AuthState
+
+<PageTitle>Refund Manager — Admin — MiMealMoney</PageTitle>
+
+<div class="d-flex align-items-center justify-content-between mb-4">
+    <h3 class="fw-bold mb-0"><i class="bi bi-arrow-return-left me-2 text-warning"></i>Refund Manager</h3>
+    <button class="btn btn-warning" @onclick="ShowNewRequestPanel">
+        <i class="bi bi-plus-lg me-1"></i>New Refund Request
+    </button>
+</div>
+
+@if (!string.IsNullOrEmpty(_successMsg))
+{
+    <div class="alert alert-success alert-dismissible fade show" role="alert">
+        @_successMsg
+        <button type="button" class="btn-close" @onclick="() => _successMsg = null"></button>
+    </div>
+}
+@if (!string.IsNullOrEmpty(_errorMsg))
+{
+    <div class="alert alert-danger alert-dismissible fade show" role="alert">
+        @_errorMsg
+        <button type="button" class="btn-close" @onclick="() => _errorMsg = null"></button>
+    </div>
+}
+
+<!-- New Request Panel -->
+@if (_showNewPanel)
+{
+    <div class="card mb-4 border-warning">
+        <div class="card-header bg-warning bg-opacity-10 fw-semibold">
+            <i class="bi bi-plus-circle me-2"></i>New Refund Request
+        </div>
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-5">
+                    <label class="form-label fw-semibold">Student Account</label>
+                    <select class="form-select" @bind="_newAccountId" @bind:after="LoadTransactionsAsync">
+                        <option value="0">— select account —</option>
+                        @foreach (var a in _allAccounts)
+                        {
+                            <option value="@a.Id">@a.FullName — @a.SchoolName</option>
+                        }
+                    </select>
+                </div>
+                <div class="col-md-5">
+                    <label class="form-label fw-semibold">Transaction to Refund</label>
+                    <select class="form-select" @bind="_newTxId" disabled="@(_accountTxs.Count == 0)">
+                        <option value="0">— select transaction —</option>
+                        @foreach (var tx in _accountTxs)
+                        {
+                            <option value="@tx.Id">
+                                @tx.InitiatedAt.ToString("MMM d, yyyy") — @tx.Amount.ToString("C") (@tx.Status)
+                            </option>
+                        }
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label fw-semibold">Amount ($)</label>
+                    <input type="number" class="form-control" step="0.01" min="0.01"
+                           @bind="_newAmount" placeholder="0.00" />
+                </div>
+                <div class="col-12">
+                    <label class="form-label fw-semibold">Reason</label>
+                    <textarea class="form-control" rows="2" @bind="_newReason"
+                              placeholder="Describe why the refund is being requested (e.g. duplicate payment, cafeteria overbilled, etc.)" maxlength="500"></textarea>
+                    <div class="form-text">@(_newReason?.Length ?? 0)/500</div>
+                </div>
+                <div class="col-12 d-flex gap-2">
+                    <button class="btn btn-warning" @onclick="SubmitRefundRequestAsync"
+                            disabled="@(_newTxId == 0 || _newAmount <= 0 || string.IsNullOrWhiteSpace(_newReason) || _saving)">
+                        @if (_saving) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                        Submit Request
+                    </button>
+                    <button class="btn btn-outline-secondary" @onclick="() => _showNewPanel = false">Cancel</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- Filter tabs -->
+<ul class="nav nav-tabs mb-4">
+    @foreach (var (label, val) in new[] { ("All", "all"), ("Pending", "pending"), ("Approved", "approved"), ("Processed", "processed"), ("Denied", "denied") })
+    {
+        var v = val;
+        <li class="nav-item">
+            <button class="nav-link @(_statusFilter == v ? "active" : "")"
+                    @onclick="() => { _statusFilter = v; _page = 1; }">
+                @label
+                @if (val != "all")
+                {
+                    var cnt = _requests.Count(r => r.Request.Status.ToString().ToLower() == val);
+                    if (cnt > 0) { <span class="badge bg-secondary ms-1">@cnt</span> }
+                }
+            </button>
+        </li>
+    }
+</ul>
+
+<!-- Requests list -->
+@if (_loading)
+{
+    <div class="text-center py-5"><span class="spinner-border text-warning"></span></div>
+}
+else
+{
+    var filtered = FilteredRequests().ToList();
+    if (!filtered.Any())
+    {
+        <div class="text-center py-5 text-muted">
+            <i class="bi bi-inbox fs-1 d-block mb-3"></i>
+            No refund requests @(_statusFilter != "all" ? $"with status '{_statusFilter}'" : "").
+        </div>
+    }
+    else
+    {
+        <div class="card">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>#</th>
+                            <th>Student</th>
+                            <th>Requested</th>
+                            <th class="text-end">Amount</th>
+                            <th>Reason</th>
+                            <th>Status</th>
+                            <th>Requested By</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var row in filtered.Skip((_page - 1) * PageSize).Take(PageSize))
+                        {
+                            <tr>
+                                <td class="text-muted small">#@row.Request.Id</td>
+                                <td>
+                                    <strong>@row.StudentName</strong>
+                                    <div class="text-muted small">@row.SchoolName</div>
+                                </td>
+                                <td class="text-muted small">@row.Request.RequestedAt.ToString("MMM d, yyyy")</td>
+                                <td class="text-end fw-bold text-warning">@row.Request.Amount.ToString("C")</td>
+                                <td class="small" style="max-width:220px;white-space:normal">@row.Request.Reason</td>
+                                <td><span class="badge @StatusBadge(row.Request.Status)">@row.Request.Status</span></td>
+                                <td class="text-muted small">@row.Request.RequestedByName</td>
+                                <td>
+                                    @if (row.Request.Status == RefundStatus.Pending)
+                                    {
+                                        <button class="btn btn-sm btn-success me-1"
+                                                @onclick="() => ApproveAsync(row.Request.Id)">
+                                            <i class="bi bi-check-lg"></i> Approve
+                                        </button>
+                                        <button class="btn btn-sm btn-outline-danger"
+                                                @onclick="() => OpenDenyModal(row.Request.Id)">
+                                            <i class="bi bi-x-lg"></i> Deny
+                                        </button>
+                                    }
+                                    else if (row.Request.Status == RefundStatus.Approved)
+                                    {
+                                        <button class="btn btn-sm btn-primary"
+                                                @onclick="() => ProcessAsync(row.Request.Id)">
+                                            <i class="bi bi-send"></i> Process
+                                        </button>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-muted small">—</span>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        @if (_totalPages > 1)
+        {
+            <nav class="mt-3">
+                <ul class="pagination justify-content-center mb-0">
+                    <li class="page-item @(_page == 1 ? "disabled" : "")">
+                        <button class="page-link" @onclick="() => _page--">‹</button>
+                    </li>
+                    @for (int i = 1; i <= _totalPages; i++)
+                    {
+                        var pg = i;
+                        <li class="page-item @(_page == pg ? "active" : "")">
+                            <button class="page-link" @onclick="() => _page = pg">@pg</button>
+                        </li>
+                    }
+                    <li class="page-item @(_page == _totalPages ? "disabled" : "")">
+                        <button class="page-link" @onclick="() => _page++">›</button>
+                    </li>
+                </ul>
+            </nav>
+        }
+    }
+}
+
+<!-- Deny modal -->
+@if (_denyModalId.HasValue)
+{
+    <div class="modal show d-block" tabindex="-1" style="background:rgba(0,0,0,.4)">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Deny Refund Request #@_denyModalId</h5>
+                    <button type="button" class="btn-close" @onclick="CloseDenyModal"></button>
+                </div>
+                <div class="modal-body">
+                    <label class="form-label fw-semibold">Reason for denial <span class="text-danger">*</span></label>
+                    <textarea class="form-control" rows="3" @bind="_denyReason"
+                              placeholder="Explain why this refund request is being denied." maxlength="500"></textarea>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @onclick="CloseDenyModal">Cancel</button>
+                    <button class="btn btn-danger" @onclick="ConfirmDenyAsync"
+                            disabled="@(string.IsNullOrWhiteSpace(_denyReason))">
+                        Confirm Denial
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private const int PageSize = 20;
+    private bool _loading = true;
+    private bool _saving;
+    private int _page = 1;
+    private int _totalPages = 1;
+    private string _statusFilter = "pending";
+    private string? _successMsg;
+    private string? _errorMsg;
+    private string? _adminUserId;
+    private string? _adminName;
+
+    // Requests list
+    private List<RefundRow> _requests = new();
+    private record RefundRow(RefundRequest Request, string StudentName, string SchoolName);
+
+    // New request panel
+    private bool _showNewPanel;
+    private List<MealMoneyAccount> _allAccounts = new();
+    private List<PaymentTransaction> _accountTxs = new();
+    private int _newAccountId;
+    private int _newTxId;
+    private decimal _newAmount;
+    private string _newReason = string.Empty;
+
+    // Deny modal
+    private int? _denyModalId;
+    private string _denyReason = string.Empty;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var auth = await AuthState.GetAuthenticationStateAsync();
+        _adminUserId = auth.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        _adminName   = auth.User.FindFirst(ClaimTypes.Name)?.Value
+                    ?? auth.User.FindFirst(ClaimTypes.Email)?.Value
+                    ?? "Admin";
+
+        await LoadRequestsAsync();
+        _allAccounts = await Db.MealMoneyAccounts.OrderBy(a => a.LastName).ToListAsync();
+        _loading = false;
+    }
+
+    private async Task LoadRequestsAsync()
+    {
+        var rows = await Db.RefundRequests
+            .Include(r => r.Transaction)
+                .ThenInclude(t => t.Account)
+            .OrderByDescending(r => r.RequestedAt)
+            .ToListAsync();
+
+        _requests = rows.Select(r => new RefundRow(
+            r,
+            r.Transaction.Account.FullName,
+            r.Transaction.Account.SchoolName
+        )).ToList();
+    }
+
+    private IEnumerable<RefundRow> FilteredRequests()
+    {
+        var list = _statusFilter switch
+        {
+            "pending"   => _requests.Where(r => r.Request.Status == RefundStatus.Pending),
+            "approved"  => _requests.Where(r => r.Request.Status == RefundStatus.Approved),
+            "processed" => _requests.Where(r => r.Request.Status == RefundStatus.Processed),
+            "denied"    => _requests.Where(r => r.Request.Status == RefundStatus.Denied),
+            _           => _requests.AsEnumerable()
+        };
+        var result = list.ToList();
+        _totalPages = Math.Max(1, (int)Math.Ceiling(result.Count / (double)PageSize));
+        return result;
+    }
+
+    private async Task ShowNewRequestPanel()
+    {
+        _showNewPanel = true;
+        _newAccountId = 0;
+        _newTxId = 0;
+        _newAmount = 0;
+        _newReason = string.Empty;
+        _accountTxs = new();
+        await Task.CompletedTask;
+    }
+
+    private async Task LoadTransactionsAsync()
+    {
+        _newTxId = 0;
+        if (_newAccountId <= 0) { _accountTxs = new(); return; }
+
+        _accountTxs = await Db.PaymentTransactions
+            .Where(t => t.MealMoneyAccountId == _newAccountId
+                     && t.Status == PaymentStatus.Completed
+                     && !Db.RefundRequests.Any(r =>
+                            r.PaymentTransactionId == t.Id
+                         && r.Status != RefundStatus.Denied))
+            .OrderByDescending(t => t.InitiatedAt)
+            .ToListAsync();
+    }
+
+    private async Task SubmitRefundRequestAsync()
+    {
+        _saving = true;
+        _errorMsg = null;
+        try
+        {
+            var tx = await Db.PaymentTransactions.FindAsync(_newTxId);
+            if (tx is null) { _errorMsg = "Transaction not found."; return; }
+            if (_newAmount > tx.Amount) { _errorMsg = $"Refund amount cannot exceed transaction amount ({tx.Amount:C})."; return; }
+
+            Db.RefundRequests.Add(new RefundRequest
+            {
+                PaymentTransactionId = _newTxId,
+                Amount               = _newAmount,
+                Reason               = _newReason.Trim(),
+                Status               = RefundStatus.Pending,
+                RequestedBy          = _adminUserId ?? "system",
+                RequestedByName      = _adminName ?? "Admin",
+                RequestedAt          = DateTime.UtcNow
+            });
+            await Db.SaveChangesAsync();
+
+            _successMsg = $"Refund request for {_newAmount:C} submitted successfully.";
+            _showNewPanel = false;
+            await LoadRequestsAsync();
+        }
+        finally { _saving = false; }
+    }
+
+    private async Task ApproveAsync(int id)
+    {
+        var r = await Db.RefundRequests.FindAsync(id);
+        if (r is null) return;
+        r.Status     = RefundStatus.Approved;
+        r.ReviewedAt = DateTime.UtcNow;
+        r.ReviewedBy = _adminName;
+        await Db.SaveChangesAsync();
+        _successMsg = $"Request #{id} approved. Ready for processing.";
+        await LoadRequestsAsync();
+    }
+
+    private async Task ProcessAsync(int id)
+    {
+        var r = await Db.RefundRequests.FindAsync(id);
+        if (r is null) return;
+
+        // In production: call StripePaymentService.CreateRefundAsync(r.Transaction.StripePaymentIntentId, r.Amount)
+        // For now: stamp as processed with a placeholder Stripe ID
+        r.Status          = RefundStatus.Processed;
+        r.ProcessedAt     = DateTime.UtcNow;
+        r.StripeRefundId  = $"re_pending_{id}_{DateTime.UtcNow:yyyyMMddHHmmss}";
+
+        // Update original transaction status
+        var tx = await Db.PaymentTransactions.FindAsync(r.PaymentTransactionId);
+        if (tx is not null) tx.Status = PaymentStatus.Refunded;
+
+        await Db.SaveChangesAsync();
+        _successMsg = $"Request #{id} processed. Transaction marked as Refunded.";
+        await LoadRequestsAsync();
+    }
+
+    private void OpenDenyModal(int id)
+    {
+        _denyModalId = id;
+        _denyReason = string.Empty;
+    }
+
+    private void CloseDenyModal()
+    {
+        _denyModalId = null;
+        _denyReason = string.Empty;
+    }
+
+    private async Task ConfirmDenyAsync()
+    {
+        if (!_denyModalId.HasValue) return;
+        var r = await Db.RefundRequests.FindAsync(_denyModalId.Value);
+        if (r is null) return;
+        r.Status       = RefundStatus.Denied;
+        r.ReviewedAt   = DateTime.UtcNow;
+        r.ReviewedBy   = _adminName;
+        r.DenialReason = _denyReason.Trim();
+        await Db.SaveChangesAsync();
+        _successMsg = $"Request #{_denyModalId} denied.";
+        CloseDenyModal();
+        await LoadRequestsAsync();
+    }
+
+    private static string StatusBadge(RefundStatus s) => s switch
+    {
+        RefundStatus.Pending   => "bg-warning text-dark",
+        RefundStatus.Approved  => "bg-info text-dark",
+        RefundStatus.Processed => "bg-success",
+        RefundStatus.Denied    => "bg-danger",
+        _                      => "bg-secondary"
+    };
+}

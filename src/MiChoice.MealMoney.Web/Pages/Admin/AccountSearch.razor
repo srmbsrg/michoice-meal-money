@@ -1,0 +1,225 @@
+@page "/admin/accounts"
+@attribute [Authorize(Roles = "Admin")]
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject MealMoneyDbContext Db
+
+<PageTitle>Account Search — Admin — MiMealMoney</PageTitle>
+
+<div class="d-flex align-items-center mb-4 gap-3">
+    <h3 class="fw-bold mb-0"><i class="bi bi-search me-2 text-primary"></i>Account Search</h3>
+    <span class="badge bg-secondary">District Admin</span>
+</div>
+
+<!-- Search bar -->
+<div class="card mb-4">
+    <div class="card-body">
+        <div class="row g-3 align-items-end">
+            <div class="col-md-4">
+                <label class="form-label fw-semibold">Student Name or ID</label>
+                <input class="form-control" @bind="_query" @bind:event="oninput"
+                       @onkeydown="OnKeyDown" placeholder="e.g. Smith, Jane, or ID123" />
+            </div>
+            <div class="col-md-3">
+                <label class="form-label fw-semibold">Campus / School</label>
+                <input class="form-control" @bind="_campusFilter" @bind:event="oninput"
+                       @onkeydown="OnKeyDown" placeholder="e.g. Lincoln Elementary" />
+            </div>
+            <div class="col-md-2">
+                <label class="form-label fw-semibold">Balance Filter</label>
+                <select class="form-select" @bind="_balanceFilter">
+                    <option value="all">All</option>
+                    <option value="low">Low Balance</option>
+                    <option value="negative">Negative</option>
+                    <option value="healthy">Healthy</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <button class="btn btn-primary w-100" @onclick="SearchAsync" disabled="@_loading">
+                    @if (_loading) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                    Search
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Summary stats -->
+@if (_searched)
+{
+    <div class="row g-3 mb-4">
+        <div class="col-6 col-md-3">
+            <div class="card text-center p-3">
+                <div class="fs-2 fw-bold text-primary">@_results.Count</div>
+                <div class="text-muted small">Accounts Found</div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="card text-center p-3">
+                <div class="fs-2 fw-bold text-success">@_results.Count(a => a.IsLowBalance)</div>
+                <div class="text-muted small">Low Balance</div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="card text-center p-3">
+                <div class="fs-2 fw-bold text-danger">@_results.Count(a => a.IsNegative)</div>
+                <div class="text-muted small">Negative</div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="card text-center p-3">
+                <div class="fs-2 fw-bold text-dark">@_results.Sum(a => a.Balance).ToString("C")</div>
+                <div class="text-muted small">Total Balance</div>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- Results table -->
+@if (_searched)
+{
+    @if (!_results.Any())
+    {
+        <div class="text-center py-5 text-muted">
+            <i class="bi bi-inbox fs-1 d-block mb-3"></i>
+            No accounts match the search criteria.
+        </div>
+    }
+    else
+    {
+        <div class="card">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Student</th>
+                            <th>Student ID</th>
+                            <th>School</th>
+                            <th>Grade</th>
+                            <th class="text-end">Balance</th>
+                            <th>Status</th>
+                            <th>Last Sync</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var acct in _results.Skip((_page - 1) * PageSize).Take(PageSize))
+                        {
+                            <tr>
+                                <td><strong>@acct.FullName</strong></td>
+                                <td class="text-muted small">@acct.StudentId</td>
+                                <td class="text-muted small">@acct.SchoolName</td>
+                                <td class="text-muted small">@acct.Grade</td>
+                                <td class="text-end fw-bold @BalanceClass(acct)">
+                                    @acct.Balance.ToString("C")
+                                </td>
+                                <td>
+                                    @if (acct.IsNegative)
+                                    {
+                                        <span class="badge bg-danger">Negative</span>
+                                    }
+                                    else if (acct.IsLowBalance)
+                                    {
+                                        <span class="badge bg-warning text-dark">Low</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge bg-success">Healthy</span>
+                                    }
+                                </td>
+                                <td class="text-muted small">@acct.LastSyncedAt.ToString("MMM d")</td>
+                                <td>
+                                    <a href="/admin/accounts/@acct.Id/transactions"
+                                       class="btn btn-sm btn-outline-primary me-1">
+                                        <i class="bi bi-list-ul"></i> Txns
+                                    </a>
+                                    <a href="/admin/refunds/new?accountId=@acct.Id"
+                                       class="btn btn-sm btn-outline-warning">
+                                        <i class="bi bi-arrow-return-left"></i> Refund
+                                    </a>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Pagination -->
+        @if (_totalPages > 1)
+        {
+            <nav class="mt-3">
+                <ul class="pagination justify-content-center mb-0">
+                    <li class="page-item @(_page == 1 ? "disabled" : "")">
+                        <button class="page-link" @onclick="() => _page--">‹ Prev</button>
+                    </li>
+                    @for (int i = 1; i <= _totalPages; i++)
+                    {
+                        var pg = i;
+                        <li class="page-item @(_page == pg ? "active" : "")">
+                            <button class="page-link" @onclick="() => _page = pg">@pg</button>
+                        </li>
+                    }
+                    <li class="page-item @(_page == _totalPages ? "disabled" : "")">
+                        <button class="page-link" @onclick="() => _page++">Next ›</button>
+                    </li>
+                </ul>
+            </nav>
+        }
+    }
+}
+
+@code {
+    private const int PageSize = 25;
+    private string _query = string.Empty;
+    private string _campusFilter = string.Empty;
+    private string _balanceFilter = "all";
+    private bool _loading;
+    private bool _searched;
+    private List<MealMoneyAccount> _results = new();
+    private int _page = 1;
+    private int _totalPages = 1;
+
+    private async Task OnKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await SearchAsync();
+    }
+
+    private async Task SearchAsync()
+    {
+        _loading = true;
+        _page = 1;
+        var q = _query.Trim().ToLower();
+        var campus = _campusFilter.Trim().ToLower();
+
+        var query = Db.MealMoneyAccounts.AsQueryable();
+
+        if (!string.IsNullOrEmpty(q))
+            query = query.Where(a =>
+                a.FirstName.ToLower().Contains(q) ||
+                a.LastName.ToLower().Contains(q) ||
+                (a.FirstName + " " + a.LastName).ToLower().Contains(q) ||
+                a.StudentId.ToLower().Contains(q));
+
+        if (!string.IsNullOrEmpty(campus))
+            query = query.Where(a => a.SchoolName.ToLower().Contains(campus));
+
+        _results = await query.OrderBy(a => a.LastName).ThenBy(a => a.FirstName).ToListAsync();
+
+        // In-memory balance filter (can't use computed properties in EF query)
+        _results = _balanceFilter switch
+        {
+            "low"      => _results.Where(a => a.IsLowBalance).ToList(),
+            "negative" => _results.Where(a => a.IsNegative).ToList(),
+            "healthy"  => _results.Where(a => !a.IsLowBalance && !a.IsNegative).ToList(),
+            _          => _results
+        };
+
+        _totalPages = Math.Max(1, (int)Math.Ceiling(_results.Count / (double)PageSize));
+        _loading = false;
+        _searched = true;
+    }
+
+    private static string BalanceClass(MealMoneyAccount a) =>
+        a.IsNegative ? "text-danger" : a.IsLowBalance ? "text-warning" : "text-success";
+}
