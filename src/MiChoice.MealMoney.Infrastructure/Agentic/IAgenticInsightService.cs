@@ -7,6 +7,12 @@ public interface IAgenticInsightService
         decimal balance,
         IEnumerable<decimal> recentDailySpend,
         CancellationToken ct = default);
+
+    Task<AgenticInsight?> GetRefundInsightAsync(
+        int pendingCount,
+        int totalCount,
+        decimal pendingAmount,
+        CancellationToken ct = default);
 }
 
 public record AgenticInsight(string Summary, InsightSeverity Severity, string? ActionLabel, string? ActionUrl);

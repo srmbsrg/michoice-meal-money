@@ -4,9 +4,10 @@
 @using Microsoft.EntityFrameworkCore
 @using System.Security.Claims
 @inject MealMoneyDbContext Db
+@inject IAgenticInsightService InsightSvc
 @inject AuthenticationStateProvider AuthState
 
-<PageTitle>Refund Manager — Admin — MiMealMoney</PageTitle>
+<PageTitle>Refund Manager \u2014 Admin \u2014 MiMealMoney</PageTitle>
 
 <div class="d-flex align-items-center justify-content-between mb-4">
     <h3 class="fw-bold mb-0"><i class="bi bi-arrow-return-left me-2 text-warning"></i>Refund Manager</h3>
@@ -30,6 +31,24 @@
     </div>
 }
 
+<!-- miAgentic Refund Queue Insight -->
+@if (_insight != null)
+{
+    var (alertClass, iconClass) = _insight.Severity switch
+    {
+        InsightSeverity.Action  => ("alert-danger",  "bi-exclamation-triangle-fill text-danger"),
+        InsightSeverity.Warning => ("alert-warning", "bi-exclamation-circle-fill text-warning"),
+        _                       => ("alert-info",    "bi-robot text-info")
+    };
+    <div class="alert @alertClass d-flex align-items-start gap-2 mb-4" role="alert">
+        <i class="bi @iconClass fs-5 mt-1 flex-shrink-0"></i>
+        <div>
+            <div class="fw-semibold mb-1"><small>miAgentic</small> \u00b7 Refund Queue Insight</div>
+            <div class="small">@_insight.Summary</div>
+        </div>
+    </div>
+}
+
 <!-- New Request Panel -->
 @if (_showNewPanel)
 {
@@ -42,21 +61,21 @@
                 <div class="col-md-5">
                     <label class="form-label fw-semibold">Student Account</label>
                     <select class="form-select" @bind="_newAccountId" @bind:after="LoadTransactionsAsync">
-                        <option value="0">— select account —</option>
+                        <option value="0">\u2014 select account \u2014</option>
                         @foreach (var a in _allAccounts)
                         {
-                            <option value="@a.Id">@a.FullName — @a.SchoolName</option>
+                            <option value="@a.Id">@a.FullName \u2014 @a.SchoolName</option>
                         }
                     </select>
                 </div>
                 <div class="col-md-5">
                     <label class="form-label fw-semibold">Transaction to Refund</label>
                     <select class="form-select" @bind="_newTxId" disabled="@(_accountTxs.Count == 0)">
-                        <option value="0">— select transaction —</option>
+                        <option value="0">\u2014 select transaction \u2014</option>
                         @foreach (var tx in _accountTxs)
                         {
                             <option value="@tx.Id">
-                                @tx.InitiatedAt.ToString("MMM d, yyyy") — @tx.Amount.ToString("C") (@tx.Status)
+                                @tx.InitiatedAt.ToString("MMM d, yyyy") \u2014 @tx.Amount.ToString("C") (@tx.Status)
                             </option>
                         }
                     </select>
@@ -116,7 +135,7 @@ else
     {
         <div class="text-center py-5 text-muted">
             <i class="bi bi-inbox fs-1 d-block mb-3"></i>
-            No refund requests @(_statusFilter != "all" ? $"with status '{_statusFilter}'" : "").
+            No refund requests @(_statusFilter != "all" ? $"with status \u2018{_statusFilter}\u2019" : "").
         </div>
     }
     else
@@ -171,7 +190,7 @@ else
                                     }
                                     else
                                     {
-                                        <span class="text-muted small">—</span>
+                                        <span class="text-muted small">\u2014</span>
                                     }
                                 </td>
                             </tr>
@@ -186,7 +205,7 @@ else
             <nav class="mt-3">
                 <ul class="pagination justify-content-center mb-0">
                     <li class="page-item @(_page == 1 ? "disabled" : "")">
-                        <button class="page-link" @onclick="() => _page--">‹</button>
+                        <button class="page-link" @onclick="() => _page--">\u2039</button>
                     </li>
                     @for (int i = 1; i <= _totalPages; i++)
                     {
@@ -196,7 +215,7 @@ else
                         </li>
                     }
                     <li class="page-item @(_page == _totalPages ? "disabled" : "")">
-                        <button class="page-link" @onclick="() => _page++">›</button>
+                        <button class="page-link" @onclick="() => _page++">\u203a</button>
                     </li>
                 </ul>
             </nav>
@@ -243,6 +262,9 @@ else
     private string? _adminUserId;
     private string? _adminName;
 
+    // miAgentic
+    private AgenticInsight? _insight;
+
     // Requests list
     private List<RefundRow> _requests = new();
     private record RefundRow(RefundRequest Request, string StudentName, string SchoolName);
@@ -270,7 +292,17 @@ else
 
         await LoadRequestsAsync();
         _allAccounts = await Db.MealMoneyAccounts.OrderBy(a => a.LastName).ToListAsync();
+        await LoadInsightAsync();
         _loading = false;
+    }
+
+    private async Task LoadInsightAsync()
+    {
+        var pending = _requests.Where(r => r.Request.Status == RefundStatus.Pending).ToList();
+        var pendingCount  = pending.Count;
+        var totalCount    = _requests.Count;
+        var pendingAmount = pending.Sum(r => r.Request.Amount);
+        _insight = await InsightSvc.GetRefundInsightAsync(pendingCount, totalCount, pendingAmount);
     }
 
     private async Task LoadRequestsAsync()
@@ -354,6 +386,7 @@ else
             _successMsg = $"Refund request for {_newAmount:C} submitted successfully.";
             _showNewPanel = false;
             await LoadRequestsAsync();
+            await LoadInsightAsync();
         }
         finally { _saving = false; }
     }
@@ -368,6 +401,7 @@ else
         await Db.SaveChangesAsync();
         _successMsg = $"Request #{id} approved. Ready for processing.";
         await LoadRequestsAsync();
+        await LoadInsightAsync();
     }
 
     private async Task ProcessAsync(int id)
@@ -388,6 +422,7 @@ else
         await Db.SaveChangesAsync();
         _successMsg = $"Request #{id} processed. Transaction marked as Refunded.";
         await LoadRequestsAsync();
+        await LoadInsightAsync();
     }
 
     private void OpenDenyModal(int id)
@@ -415,6 +450,7 @@ else
         _successMsg = $"Request #{_denyModalId} denied.";
         CloseDenyModal();
         await LoadRequestsAsync();
+        await LoadInsightAsync();
     }
 
     private static string StatusBadge(RefundStatus s) => s switch

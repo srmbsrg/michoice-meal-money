@@ -75,4 +75,39 @@ public class MealMoneyInsightService : IAgenticInsightService
 
         return Task.FromResult<AgenticInsight?>(result);
     }
+
+    public Task<AgenticInsight?> GetRefundInsightAsync(
+        int pendingCount,
+        int totalCount,
+        decimal pendingAmount,
+        CancellationToken ct = default)
+    {
+        if (pendingCount == 0)
+        {
+            return Task.FromResult<AgenticInsight?>(new AgenticInsight(
+                "Refund queue is clear \u2014 no pending requests require action.",
+                InsightSeverity.Info, null, null));
+        }
+
+        if (pendingCount >= 10)
+        {
+            return Task.FromResult<AgenticInsight?>(new AgenticInsight(
+                $"{pendingCount} refund requests are pending ({pendingAmount:C} total). " +
+                "High queue volume may indicate a recurring cafeteria billing issue \u2014 consider investigating the root cause.",
+                InsightSeverity.Action, null, null));
+        }
+
+        if (totalCount > 0 && (double)pendingCount / totalCount > 0.4)
+        {
+            return Task.FromResult<AgenticInsight?>(new AgenticInsight(
+                $"{pendingCount} of {totalCount} total refund requests ({pendingAmount:C}) remain pending \u2014 " +
+                "an elevated rate. Scheduling a regular review cycle can prevent backlog buildup.",
+                InsightSeverity.Warning, null, null));
+        }
+
+        return Task.FromResult<AgenticInsight?>(new AgenticInsight(
+            $"{pendingCount} refund request{(pendingCount == 1 ? "" : "s")} pending, " +
+            $"totaling {pendingAmount:C}. Queue is within normal range.",
+            InsightSeverity.Info, null, null));
+    }
 }
