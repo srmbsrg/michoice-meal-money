@@ -79,4 +79,5 @@ app.MapPost("/auth/logout", async (SignInManager<MealMoneyUser> signIn, HttpCont
     ctx.Response.Redirect("/");
 });
 
+app.MapGet("/health", () => Results.Ok("Healthy"));
 app.Run();
