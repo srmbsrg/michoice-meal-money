@@ -45,6 +45,9 @@ builder.Services.AddHttpClient("MiChoiceApi", c =>
     c.BaseAddress = new Uri(builder.Configuration["MiChoiceApiBaseUrl"] ?? "https://api.michoice.app");
 });
 
+// Parent-facing school menu source (self-contained demo data, aligned with Manager vocab)
+builder.Services.AddSingleton<MiChoice.MealMoney.Web.Services.SchoolMenuService>();
+
 // Blazor
 builder.Services.AddRazorComponents().AddInteractiveServerComponents();
 builder.Services.AddCascadingAuthenticationState();

@@ -1,0 +1,302 @@
+@page "/menus"
+@rendermode InteractiveServer
+@inject SchoolMenuService Menus
+@inject NavigationManager Nav
+
+<PageTitle>School Menus — MiMealMoney</PageTitle>
+
+<!-- Warm parent hero -->
+<div class="parent-hero mb-4">
+    <div class="parent-hero-wave">
+        <svg viewBox="0 0 1440 120" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <path d="M0,64 C240,120 480,16 720,48 C960,80 1200,120 1440,72 L1440,120 L0,120 Z" fill="#ffffff"></path>
+        </svg>
+    </div>
+    <div class="parent-hero-inner">
+        <div class="parent-hero-art" aria-hidden="true">🥗🍎🥛</div>
+        <h1 class="parent-hero-title">What's for lunch this month?</h1>
+        <p class="parent-hero-sub">Pick your school and see the daily menu — breakfast, lunch, snack, and after-school supper.</p>
+    </div>
+</div>
+
+<div class="row g-4">
+    <!-- LEFT RAIL — quick links (like a school-links panel) -->
+    <div class="col-lg-3">
+        <div class="hotlink-panel">
+            <div class="hotlink-title"><i class="bi bi-link-45deg me-1"></i>Quick Links</div>
+
+            <a class="hotlink-btn hotlink-apply" href="https://michoice-parent-portal-production.up.railway.app" target="_blank" rel="noopener">
+                <span class="hotlink-ico"><i class="bi bi-file-earmark-text"></i></span>
+                <span class="hotlink-text">
+                    <span class="hotlink-head">Free &amp; Reduced Application</span>
+                    <span class="hotlink-desc">Apply online in minutes</span>
+                </span>
+                <i class="bi bi-box-arrow-up-right hotlink-ext"></i>
+            </a>
+
+            <a class="hotlink-btn hotlink-pay" href="/pay">
+                <span class="hotlink-ico"><i class="bi bi-cash-coin"></i></span>
+                <span class="hotlink-text">
+                    <span class="hotlink-head">Add Meal Money</span>
+                    <span class="hotlink-desc">Online child nutrition payments</span>
+                </span>
+                <i class="bi bi-chevron-right hotlink-ext"></i>
+            </a>
+
+            <div class="hotlink-note">
+                <i class="bi bi-info-circle me-1"></i>
+                Menus are aligned with what your district configures in MiChoice Manager.
+            </div>
+        </div>
+
+        @if (_campus is not null)
+        {
+            <div class="hotlink-panel mt-3">
+                <div class="hotlink-title"><i class="bi bi-building me-1"></i>Your School</div>
+                <div class="d-flex align-items-center">
+                    <div class="campus-mini-emoji">@_campus.Emoji</div>
+                    <div>
+                        <div class="fw-bold">@_campus.Name</div>
+                        <div class="small text-muted">@_campus.Grades</div>
+                    </div>
+                </div>
+                <button class="btn btn-sm btn-outline-success w-100 mt-3" @onclick="ClearCampus">
+                    <i class="bi bi-arrow-left-right me-1"></i>Change school
+                </button>
+            </div>
+        }
+    </div>
+
+    <!-- MAIN COLUMN -->
+    <div class="col-lg-9">
+
+    @if (_campus is null)
+    {
+        <!-- STEP 1 — pick your campus -->
+        <div class="picker-head mb-3">
+            <h4 class="fw-bold mb-1">Pick your school</h4>
+            <p class="text-muted mb-0">Choose a campus to see its monthly menu calendar.</p>
+        </div>
+        <div class="row g-3">
+            @foreach (var c in Menus.Campuses)
+            {
+                <div class="col-md-4">
+                    <button class="campus-card w-100" @onclick="() => SelectCampus(c.Id)">
+                        <div class="campus-card-emoji">@c.Emoji</div>
+                        <div class="campus-card-name">@c.Name</div>
+                        <div class="campus-card-grades">@c.Grades</div>
+                        <div class="campus-card-cta">View menus <i class="bi bi-arrow-right"></i></div>
+                    </button>
+                </div>
+            }
+        </div>
+    }
+    else
+    {
+        <!-- STEP 2 — meal-service pills + month calendar -->
+        <div class="d-flex flex-wrap align-items-center justify-content-between mb-3">
+            <div class="svc-pills">
+                @foreach (var s in Menus.Services)
+                {
+                    <button class="svc-pill @(s == _service ? "svc-pill-active" : "")" @onclick="() => SetService(s)">
+                        <i class="bi @s.Icon() me-1"></i>@s.Label()
+                    </button>
+                }
+            </div>
+            <div class="month-nav">
+                <button class="btn btn-sm btn-light" @onclick="PrevMonth" aria-label="Previous month"><i class="bi bi-chevron-left"></i></button>
+                <span class="month-label">@_month.ToString("MMMM yyyy")</span>
+                <button class="btn btn-sm btn-light" @onclick="NextMonth" aria-label="Next month"><i class="bi bi-chevron-right"></i></button>
+            </div>
+        </div>
+
+        <!-- weekday headers (school week Mon–Fri) -->
+        <div class="cal-weekhead">
+            @foreach (var wd in _weekdayNames)
+            {
+                <div class="cal-weekhead-cell">@wd</div>
+            }
+        </div>
+
+        <!-- calendar weeks -->
+        @foreach (var week in _weeks)
+        {
+            <div class="cal-week">
+                @foreach (var date in week)
+                {
+                    var inMonth = date.Month == _month.Month;
+                    var menu = inMonth ? Menus.MenuFor(_campus.Id, _service, date) : null;
+                    var isSel = _selected.HasValue && _selected.Value == date;
+                    <div class="cal-cell @(inMonth ? "" : "cal-cell-out") @(isSel ? "cal-cell-sel" : "")"
+                         @onclick="@(() => { if (inMonth) SelectDay(date); })">
+                        @if (inMonth)
+                        {
+                            <div class="cal-daynum">@date.Day</div>
+                            @if (menu!.HasMenu)
+                            {
+                                <div class="cal-title">@menu.Title</div>
+                                <div class="cal-dishes">
+                                    @foreach (var d in menu.Dishes.Where(x => x.IsReimbursable).Take(3))
+                                    {
+                                        <span class="dish-chip">@d.Name</span>
+                                    }
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="cal-nomenu">No service</div>
+                            }
+                        }
+                    </div>
+                }
+            </div>
+        }
+
+        <!-- selected-day detail -->
+        @if (_selected.HasValue)
+        {
+            var dm = Menus.MenuFor(_campus.Id, _service, _selected.Value);
+            <div class="day-detail mt-4">
+                <div class="day-detail-head">
+                    <div>
+                        <div class="day-detail-date">@_selected.Value.ToString("dddd, MMMM d")</div>
+                        <div class="day-detail-svc"><i class="bi @_service.Icon() me-1"></i>@_service.Label()@(dm.Title is null ? "" : " · " + dm.Title)</div>
+                    </div>
+                    <button class="btn-close" @onclick="() => _selected = null" aria-label="Close"></button>
+                </div>
+
+                @if (!dm.HasMenu)
+                {
+                    <div class="text-muted py-3"><i class="bi bi-calendar-x me-1"></i>No @_service.Label().ToLower() service on this day.</div>
+                }
+                else
+                {
+                    <div class="mb-2 small text-muted">Reimbursable meal — everything below is included at the meal price:</div>
+                    <div class="dish-list">
+                        @foreach (var d in dm.Dishes.Where(x => x.IsReimbursable))
+                        {
+                            <div class="dish-row">
+                                <span class="dish-cat dish-cat-@(d.Category.ToLower().Replace("é","e"))">@d.Category</span>
+                                <span class="dish-name">@d.Name</span>
+                                <span class="dish-meta">
+                                    @if (d.Vegetarian){<span class="veg-badge" title="Vegetarian">🌱</span>}
+                                    <span class="cal-badge">@d.Calories cal</span>
+                                    @if (d.Allergens.Length > 0){<span class="alg-badge" title="Allergens">@string.Join(", ", d.Allergens)</span>}
+                                </span>
+                            </div>
+                        }
+                    </div>
+
+                    @if (dm.Dishes.Any(x => !x.IsReimbursable))
+                    {
+                        <div class="mb-2 mt-3 small text-muted">À-la-carte extras (added to the account balance):</div>
+                        <div class="dish-list">
+                            @foreach (var d in dm.Dishes.Where(x => !x.IsReimbursable))
+                            {
+                                <div class="dish-row">
+                                    <span class="dish-cat dish-cat-extra">@d.Category</span>
+                                    <span class="dish-name">@d.Name</span>
+                                    <span class="dish-meta">
+                                        @if (d.Vegetarian){<span class="veg-badge" title="Vegetarian">🌱</span>}
+                                        <span class="cal-badge">@d.Calories cal</span>
+                                        @if (d.Allergens.Length > 0){<span class="alg-badge">@string.Join(", ", d.Allergens)</span>}
+                                        <span class="price-badge">@d.PriceLabel</span>
+                                    </span>
+                                </div>
+                            }
+                        </div>
+                    }
+
+                    <div class="detail-cta mt-3">
+                        <a href="/pay" class="btn btn-success btn-sm"><i class="bi bi-cash-coin me-1"></i>Add meal money</a>
+                        <span class="small text-muted ms-2">Menu items &amp; allergens are examples for the demo.</span>
+                    </div>
+                }
+            </div>
+        }
+
+        <div class="roadmap-note mt-4">
+            <i class="bi bi-info-circle me-1"></i>
+            <strong>How this connects:</strong> menus, items and meal services use the same vocabulary the
+            <em>MiChoice Manager</em> module configures, so a menu set by the district appears here for families.
+            Live real-time cross-app sync runs over the shared MiChoice gateway — <span class="text-muted">coming soon</span>;
+            this preview uses aligned demo data.
+        </div>
+    }
+    </div><!-- /main col -->
+</div><!-- /row -->
+
+@code {
+    private CampusInfo? _campus;
+    private MealService _service = MealService.Lunch;
+    private DateOnly _month;
+    private DateOnly? _selected;
+    private readonly string[] _weekdayNames = { "Mon", "Tue", "Wed", "Thu", "Fri" };
+    private List<List<DateOnly>> _weeks = new();
+
+    protected override void OnInitialized()
+    {
+        var today = DateOnly.FromDateTime(DateTime.Today);
+        _month = new DateOnly(today.Year, today.Month, 1);
+        BuildWeeks();
+    }
+
+    private void SelectCampus(string id)
+    {
+        _campus = Menus.Campus(id);
+        _selected = null;
+        // helpfully preselect today if it's a school day in the shown month
+        var today = DateOnly.FromDateTime(DateTime.Today);
+        if (today.Month == _month.Month && today.Year == _month.Year && Menus.IsSchoolDay(today))
+            _selected = today;
+    }
+
+    private void ClearCampus()
+    {
+        _campus = null;
+        _selected = null;
+    }
+
+    private void SetService(MealService s)
+    {
+        _service = s;
+        // keep the selected day; its menu refreshes for the new service
+    }
+
+    private void PrevMonth()
+    {
+        _month = _month.AddMonths(-1);
+        _selected = null;
+        BuildWeeks();
+    }
+
+    private void NextMonth()
+    {
+        _month = _month.AddMonths(1);
+        _selected = null;
+        BuildWeeks();
+    }
+
+    private void SelectDay(DateOnly date)
+    {
+        _selected = (_selected.HasValue && _selected.Value == date) ? null : date;
+    }
+
+    private void BuildWeeks()
+    {
+        _weeks = new();
+        var first = _month;
+        var last = _month.AddMonths(1).AddDays(-1);
+        // back up to the Monday on/before the 1st
+        int sinceMonday = ((int)first.DayOfWeek + 6) % 7;
+        var cursor = first.AddDays(-sinceMonday);
+        while (cursor <= last)
+        {
+            var week = new List<DateOnly>();
+            for (int i = 0; i < 5; i++)   // Mon–Fri only
+                week.Add(cursor.AddDays(i));
+            _weeks.Add(week);
+            cursor = cursor.AddDays(7);
+        }
+    }
+}
