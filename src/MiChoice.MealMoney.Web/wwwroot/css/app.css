@@ -286,3 +286,22 @@
 .quicklink-go { font-weight: 700; color: var(--mm-green); font-size: .9rem; }
 .quicklink-apply .quicklink-go { color: var(--mm-amber); }
 .quicklink-pay .quicklink-go { color: #2f78ad; }
+
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Official MiChoice logo in header + global pill buttons (V, 2026-07-04)
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* MiChoice mouse-mark logo, top-left beside the MiMealMoney product name */
+.mm-logo {
+    height: 42px;
+    width: auto;
+    border-radius: 8px;
+    display: inline-block;
+}
+
+/* Global pill / rounded button standard — soft ovals across the parent site.
+   (POS stays squared per Scott's exception; this app is parent-facing.) */
+.btn {
+    border-radius: 9999px !important;
+}
