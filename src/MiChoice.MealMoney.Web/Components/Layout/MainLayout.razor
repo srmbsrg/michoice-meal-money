@@ -20,6 +20,11 @@
                 </ul>
                 <NavMenu />
                 <div class="ms-auto d-flex align-items-center">
+                    <button type="button" class="mc-theme-toggle me-3" onclick="window.mcTheme.toggle()"
+                            title="Toggle dark / light mode" aria-label="Toggle dark or light mode">
+                        <i class="bi bi-moon-stars-fill mc-ic-moon"></i>
+                        <i class="bi bi-sun-fill mc-ic-sun"></i>
+                    </button>
                     <AuthorizeView>
                         <Authorized>
                             <span class="text-white me-3 small">

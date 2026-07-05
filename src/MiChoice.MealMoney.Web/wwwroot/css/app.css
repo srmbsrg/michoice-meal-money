@@ -337,3 +337,66 @@
     .mm-hero::before { background: rgba(8,12,8,.62); }
     .mm-hero h1, .mm-hero .lead { max-width: 100%; }
 }
+
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Dark / light theme toggle (V, 2026-07-04)
+   Sun/moon button in the header; dark mode uses a warm-neutral dark palette
+   so the green/amber/berry brand accents stay legible and intentional.
+   ══════════════════════════════════════════════════════════════════════════ */
+.mc-theme-toggle {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 34px; height: 34px; padding: 0;
+    background: transparent; border: 1px solid rgba(255,255,255,.5);
+    border-radius: 8px; color: #fff; cursor: pointer; font-size: 1rem;
+    transition: background .15s, border-color .15s;
+}
+.mc-theme-toggle:hover { background: rgba(255,255,255,.16); border-color: #fff; }
+.mc-ic-sun { display: none; }
+[data-theme="dark"] .mc-ic-moon { display: none; }
+[data-theme="dark"] .mc-ic-sun  { display: inline; }
+
+/* ── Dark mode — warm-neutral surfaces ─────────────────────────────────────── */
+[data-theme="dark"] body { background: #101210; color: #ecefe9; }
+[data-theme="dark"] .mm-navbar { background-color: #124a29 !important; }   /* deepen the green a touch */
+[data-theme="dark"] .mm-footer { background: #14160f; border-top-color: #262a22; }
+[data-theme="dark"] .mm-footer .text-muted,
+[data-theme="dark"] .mm-footer a { color: #9aa596 !important; }
+
+/* Cards / tiles / panels — flip white/cream surfaces to warm dark */
+[data-theme="dark"] .balance-card,
+[data-theme="dark"] .feature-tile,
+[data-theme="dark"] .campus-card,
+[data-theme="dark"] .cal-cell,
+[data-theme="dark"] .day-detail,
+[data-theme="dark"] .hotlink-panel,
+[data-theme="dark"] .card-input-stub {
+    background: #1a1d18 !important; border-color: #2a2e26 !important; color: #ecefe9;
+}
+[data-theme="dark"] .cal-cell-out { background: #15170f !important; border-color: #23261d !important; }
+[data-theme="dark"] .hotlink-apply { background: #2a2113 !important; border-color: #4a3a1c !important; }
+[data-theme="dark"] .hotlink-pay   { background: #143020 !important; border-color: #1f5236 !important; }
+[data-theme="dark"] .quicklink-menu  { background: #14261a !important; border-color: #1f5236 !important; }
+[data-theme="dark"] .quicklink-apply { background: #2a2113 !important; border-color: #4a3a1c !important; }
+[data-theme="dark"] .quicklink-pay   { background: #13212e !important; border-color: #234a63 !important; }
+[data-theme="dark"] .dish-chip { background: #1f3a2a; color: #bfe6cd; }
+[data-theme="dark"] .cal-badge { background: #23261d; color: #a9b0a6; }
+[data-theme="dark"] .price-badge { background: #143020; color: #7ed6a0; }
+[data-theme="dark"] .alg-badge { background: #2e2113; color: #e5b483; }
+[data-theme="dark"] .roadmap-note { background: #1c1a12; border-color: #3a3320; color: #c9bfa6; }
+[data-theme="dark"] .agent-panel { background: #14261a; border-left-color: #2e7d4f; }
+
+/* Text + muted colors readable on dark */
+[data-theme="dark"] .cal-daynum,
+[data-theme="dark"] .campus-card-name,
+[data-theme="dark"] .quicklink-head,
+[data-theme="dark"] .hotlink-head,
+[data-theme="dark"] .day-detail-date,
+[data-theme="dark"] .dish-name { color: #ecefe9 !important; }
+[data-theme="dark"] .text-muted,
+[data-theme="dark"] .campus-card-grades,
+[data-theme="dark"] .quicklink-sub,
+[data-theme="dark"] .hotlink-desc { color: #9aa596 !important; }
+[data-theme="dark"] .balance-positive { color: #4fbf7d; }
+[data-theme="dark"] .mm-btn-register { color: #124a29 !important; }
+/* Bootstrap-native (data-bs-theme=dark) covers generic .card, tables, forms, modals. */
