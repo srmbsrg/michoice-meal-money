@@ -305,3 +305,35 @@
 .btn {
     border-radius: 9999px !important;
 }
+
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Tesa cinematic hero banner — kids-2-group-trays (V, 2026-07-04)
+   Subject on the RIGHT of the art → headline pushed LEFT; light text;
+   left-weighted whisper scrim only (art stays visible on the right).
+   ═══════════════════════════════════════════════════════════════════════════ */
+.mm-hero {
+    position: relative;
+    overflow: hidden;
+    border-radius: 16px;
+    margin-bottom: 2rem;
+    text-align: left;
+    padding-left: 2.5rem;
+    padding-right: 2.5rem;
+    background: #0d100d url('/img/hero-banner.jpg') right center / cover no-repeat;
+}
+.mm-hero::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, rgba(8,12,8,.84) 0%, rgba(8,12,8,.64) 34%, rgba(8,12,8,.24) 70%, rgba(8,12,8,.04) 100%);
+    z-index: 0;
+}
+.mm-hero > * { position: relative; z-index: 1; }
+.mm-hero h1 { color: #ffffff !important; max-width: 62%; }
+.mm-hero .lead { color: #eaf3ea !important; max-width: 56%; }
+@media (max-width: 768px) {
+    .mm-hero { background-position: center; text-align: center; }
+    .mm-hero::before { background: rgba(8,12,8,.62); }
+    .mm-hero h1, .mm-hero .lead { max-width: 100%; }
+}
