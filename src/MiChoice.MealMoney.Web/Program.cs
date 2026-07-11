@@ -37,8 +37,16 @@ builder.Services.ConfigureApplicationCookie(options =>
     options.AccessDeniedPath = "/auth/login";
 });
 
+// Payments: real Stripe when this install supplies live keys (per-district production install),
+// otherwise the simulated stub (demo installs). Config-gated so the SAME build serves both.
+builder.Services.Configure<StripeOptions>(builder.Configuration.GetSection(StripeOptions.SectionName));
+var stripeOptions = builder.Configuration.GetSection(StripeOptions.SectionName).Get<StripeOptions>() ?? new StripeOptions();
+if (stripeOptions.IsLive)
+    builder.Services.AddScoped<IPaymentService, StripePaymentService>();
+else
+    builder.Services.AddScoped<IPaymentService, StubPaymentService>();
+
 // Application services
-builder.Services.AddScoped<IPaymentService, StripePaymentService>();
 builder.Services.AddScoped<IAgenticInsightService, MealMoneyInsightService>();
 builder.Services.AddHttpClient("MiChoiceApi", c =>
 {
@@ -54,6 +62,9 @@ builder.Services.AddCascadingAuthenticationState();
 builder.Services.AddHttpContextAccessor();
 
 var app = builder.Build();
+
+app.Logger.LogInformation("MiMealMoney payment mode: {Mode}",
+    stripeOptions.IsLive ? "LIVE Stripe (real charges)" : "Simulated stub (demo — no real charges)");
 
 // Ensure DB exists
 using (var scope = app.Services.CreateScope())

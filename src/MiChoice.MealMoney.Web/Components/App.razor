@@ -13,6 +13,9 @@
 <body>
     <Routes />
     <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/js/bootstrap.bundle.min.js"></script>
+    <!-- Stripe.js + Payment Element interop — used only by live installs (real keys); harmless in demo mode. -->
+    <script src="https://js.stripe.com/v3/"></script>
+    <script src="/js/stripe-payment.js"></script>
     <script src="_framework/blazor.server.js"></script>
 </body>
 </html>

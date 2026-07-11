@@ -2,9 +2,11 @@
 @attribute [Authorize]
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.EntityFrameworkCore
+@using Microsoft.JSInterop
 @using System.Security.Claims
 @inject MealMoneyDbContext Db
 @inject IPaymentService PaymentSvc
+@inject IJSRuntime JS
 @inject AuthenticationStateProvider AuthState
 @inject NavigationManager Nav
 
@@ -20,10 +22,13 @@
             <span class="small fw-semibold @(_step >= 1 ? "text-success" : "text-muted")">Amount &amp; Child</span>
             <div class="step-line"></div>
             <div class="step-circle @StepClass(2)">2</div>
-            <span class="small fw-semibold @(_step >= 2 ? "text-success" : "text-muted")">Card Details</span>
-            <div class="step-line"></div>
-            <div class="step-circle @StepClass(3)">@if (_step > 3) { <i class="bi bi-check"></i> } else { <span>3</span> }</div>
-            <span class="small fw-semibold @(_step >= 3 ? "text-success" : "text-muted")">Confirm</span>
+            <span class="small fw-semibold @(_step >= 2 ? "text-success" : "text-muted")">@(PaymentSvc.IsLive ? "Payment" : "Card Details")</span>
+            @if (!PaymentSvc.IsLive)
+            {
+                <div class="step-line"></div>
+                <div class="step-circle @StepClass(3)">@if (_step > 3) { <i class="bi bi-check"></i> } else { <span>3</span> }</div>
+                <span class="small fw-semibold @(_step >= 3 ? "text-success" : "text-muted")">Confirm</span>
+            }
         </div>
 
         @if (_step == 1)
@@ -77,19 +82,52 @@
                     }
                 </div>
 
-                <button class="btn btn-success w-100 fw-semibold" @onclick="GoToStep2">
+                <button class="btn btn-success w-100 fw-semibold" @onclick="ContinueFromStep1" disabled="@_processing">
+                    @if (_processing) { <span class="spinner-border spinner-border-sm me-2"></span> }
                     Continue <i class="bi bi-arrow-right ms-1"></i>
                 </button>
             </div>
         }
 
-        @if (_step == 2)
+        @* ── Step 2 (LIVE): real Stripe Payment Element ─────────────────────── *@
+        @if (_step == 2 && PaymentSvc.IsLive)
+        {
+            var selectedAccount = _accounts.FirstOrDefault(a => a.Id == _selectedAccountId);
+            <div class="card balance-card p-4">
+                <h5 class="fw-bold mb-3">Payment</h5>
+                <table class="table table-borderless mb-3">
+                    <tbody>
+                        <tr><td class="text-muted">Child</td><td class="fw-semibold">@selectedAccount?.FullName</td></tr>
+                        <tr><td class="text-muted">Amount</td><td class="fw-bold fs-5 balance-positive">@_amount.ToString("C")</td></tr>
+                    </tbody>
+                </table>
+                <div class="text-muted small fw-semibold mb-3"><i class="bi bi-lock me-1"></i>Secure payment powered by Stripe</div>
+                <!-- Stripe Payment Element mounts here (card entered inside Stripe's iframe; never sent to our server). -->
+                <div id="payment-element" class="mb-3"></div>
+                @if (!string.IsNullOrEmpty(_payError))
+                {
+                    <div class="alert alert-danger">@_payError</div>
+                }
+                <div class="d-flex gap-2">
+                    <button class="btn btn-outline-secondary" @onclick="BackToStep1" disabled="@_processing">
+                        <i class="bi bi-arrow-left me-1"></i>Back
+                    </button>
+                    <button class="btn btn-success flex-fill fw-semibold" @onclick="PayLive" disabled="@_processing">
+                        @if (_processing) { <span class="spinner-border spinner-border-sm me-2"></span> }
+                        <i class="bi bi-shield-check me-1"></i>Pay @_amount.ToString("C")
+                    </button>
+                </div>
+            </div>
+        }
+
+        @* ── Step 2 (DEMO/STUB): simulated card entry ──────────────────────── *@
+        @if (_step == 2 && !PaymentSvc.IsLive)
         {
             <div class="card balance-card p-4">
                 <h5 class="fw-bold mb-3">Card Details</h5>
                 <div class="card-input-stub mb-3">
                     <div class="text-muted small fw-semibold mb-3">
-                        <i class="bi bi-lock me-1"></i>Secure payment powered by Stripe
+                        <i class="bi bi-lock me-1"></i>Secure payment powered by Stripe <span class="badge bg-secondary ms-1">Demo</span>
                     </div>
                     <div class="mb-3">
                         <label class="form-label fw-semibold small">Card Number</label>
@@ -124,7 +162,7 @@
             </div>
         }
 
-        @if (_step == 3)
+        @if (_step == 3 && !PaymentSvc.IsLive)
         {
             var selectedAccount = _accounts.FirstOrDefault(a => a.Id == _selectedAccountId);
             <div class="card balance-card p-4">
@@ -157,7 +195,7 @@
                     <button class="btn btn-outline-secondary" @onclick="() => _step = 2">
                         <i class="bi bi-arrow-left me-1"></i>Back
                     </button>
-                    <button class="btn btn-success flex-fill fw-semibold" @onclick="ConfirmPayment" disabled="@_processing">
+                    <button class="btn btn-success flex-fill fw-semibold" @onclick="ConfirmPaymentStub" disabled="@_processing">
                         @if (_processing) { <span class="spinner-border spinner-border-sm me-2"></span> }
                         <i class="bi bi-shield-check me-1"></i>Confirm Payment
                     </button>
@@ -205,6 +243,12 @@
     private string? _confirmationId;
     private string? _userId;
 
+    // Live (Stripe Payment Element) state
+    private string? _clientSecret;
+    private string? _publishableKey;
+    private string? _paymentIntentId;
+    private bool _liveMounted;
+
     protected override async Task OnInitializedAsync()
     {
         var auth = await AuthState.GetAuthenticationStateAsync();
@@ -223,34 +267,123 @@
             _selectedAccountId = AccountIdParam.Value;
     }
 
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // In live mode, mount the Stripe Payment Element once the step-2 DOM (#payment-element) is present.
+        if (_step == 2 && PaymentSvc.IsLive && !_liveMounted && _clientSecret != null && _publishableKey != null)
+        {
+            _liveMounted = true; // guard before the await so we don't double-mount on re-render
+            var mount = await JS.InvokeAsync<JsResult>("miStripe.mount", _publishableKey, _clientSecret);
+            if (mount is { Ok: false })
+            {
+                _payError = mount.Error ?? "Could not initialize the payment form.";
+                StateHasChanged();
+            }
+        }
+    }
+
     private void SelectPreset(decimal amount)
     {
         _amount = amount;
         _customMode = false;
     }
 
-    private void GoToStep2()
+    private bool ValidateStep1()
     {
         _step1Error = null;
-        if (_selectedAccountId == 0) { _step1Error = "Please select a child."; return; }
-        if (_amount < 5)             { _step1Error = "Minimum payment is $5.00."; return; }
-        if (_amount > 200)           { _step1Error = "Maximum payment is $200.00 per transaction."; return; }
-        _step = 2;
+        if (_selectedAccountId == 0) { _step1Error = "Please select a child."; return false; }
+        if (_amount < 5) { _step1Error = "Minimum payment is $5.00."; return false; }
+        if (_amount > 200) { _step1Error = "Maximum payment is $200.00 per transaction."; return false; }
+        return true;
+    }
+
+    // Step 1 → Step 2. Live mode opens a PaymentIntent first; demo mode just advances.
+    private async Task ContinueFromStep1()
+    {
+        if (!ValidateStep1()) return;
+
+        if (!PaymentSvc.IsLive)
+        {
+            _step = 2;
+            return;
+        }
+
+        _processing = true;
+        _payError = null;
+        try
+        {
+            var init = await PaymentSvc.CreatePaymentIntentAsync(new PaymentIntentInitRequest(_amount, _userId!, _selectedAccountId));
+            if (!init.Success)
+            {
+                _step1Error = init.ErrorMessage ?? "Could not start payment. Please try again.";
+                return;
+            }
+            _clientSecret = init.ClientSecret;
+            _publishableKey = init.PublishableKey;
+            _paymentIntentId = init.PaymentIntentId;
+            _liveMounted = false;
+            _step = 2;
+        }
+        finally
+        {
+            _processing = false;
+        }
+    }
+
+    private void BackToStep1()
+    {
+        _step = 1;
+        _liveMounted = false;
+        _clientSecret = _publishableKey = _paymentIntentId = null;
+        _payError = null;
     }
 
     private void GoToStep3()
     {
         _step2Error = null;
         var cn = _cardNumber.Replace(" ", "").Trim();
-        if (cn.Length < 12)          { _step2Error = "Please enter a valid card number."; return; }
+        if (cn.Length < 12) { _step2Error = "Please enter a valid card number."; return; }
         if (string.IsNullOrWhiteSpace(_cardExpiry) || !_cardExpiry.Contains('/'))
-                                     { _step2Error = "Please enter a valid expiry (MM/YY)."; return; }
+        { _step2Error = "Please enter a valid expiry (MM/YY)."; return; }
         if (string.IsNullOrWhiteSpace(_cardCvc) || _cardCvc.Length < 3)
-                                     { _step2Error = "Please enter a valid CVC."; return; }
+        { _step2Error = "Please enter a valid CVC."; return; }
         _step = 3;
     }
 
-    private async Task ConfirmPayment()
+    // LIVE: confirm the card via Stripe.js, then verify server-side before crediting the balance.
+    private async Task PayLive()
+    {
+        _processing = true;
+        _payError = null;
+        try
+        {
+            var confirm = await JS.InvokeAsync<JsConfirm>("miStripe.confirm");
+            if (confirm.Status is "succeeded" or "processing")
+            {
+                // Never trust the client: re-fetch the PaymentIntent from Stripe and verify.
+                var result = await PaymentSvc.ConfirmPaymentIntentAsync(_paymentIntentId!);
+                if (result.Success)
+                    await FinalizeSuccessAsync(result);
+                else
+                    _payError = result.ErrorMessage ?? "Payment could not be verified.";
+            }
+            else
+            {
+                _payError = confirm.Error ?? "Payment was not completed.";
+            }
+        }
+        catch (Exception ex)
+        {
+            _payError = $"An error occurred: {ex.Message}";
+        }
+        finally
+        {
+            _processing = false;
+        }
+    }
+
+    // DEMO/STUB: simulated processing (no real charge), then credit the balance.
+    private async Task ConfirmPaymentStub()
     {
         _processing = true;
         _payError = null;
@@ -268,46 +401,12 @@
                 Cvc: _cardCvc
             );
 
-            // Create pending transaction
-            var tx = new PaymentTransaction
-            {
-                MealMoneyAccountId = _selectedAccountId,
-                ParentUserId = _userId!,
-                Amount = _amount,
-                Status = PaymentStatus.Pending,
-                InitiatedAt = DateTime.UtcNow
-            };
-            Db.PaymentTransactions.Add(tx);
-            await Db.SaveChangesAsync();
-
-            // Process payment (stub)
             var result = await PaymentSvc.ProcessAsync(request);
 
-            tx.Status = result.Status;
-            tx.StripePaymentIntentId = result.PaymentIntentId;
-            tx.Last4 = result.Last4;
-            tx.CardBrand = result.CardBrand;
-            tx.CompletedAt = result.Success ? DateTime.UtcNow : null;
-            tx.FailureReason = result.ErrorMessage;
-
             if (result.Success)
-            {
-                var acct = await Db.MealMoneyAccounts.FindAsync(_selectedAccountId);
-                if (acct != null) acct.Balance += _amount;
-                _successChildName = acct?.FullName;
-            }
-
-            await Db.SaveChangesAsync();
-
-            if (result.Success)
-            {
-                _confirmationId = result.PaymentIntentId;
-                _step = 4;
-            }
+                await FinalizeSuccessAsync(result);
             else
-            {
                 _payError = result.ErrorMessage ?? "Payment failed. Please try again.";
-            }
         }
         catch (Exception ex)
         {
@@ -315,6 +414,37 @@
         }
 
         _processing = false;
+    }
+
+    // Shared: record the transaction and credit the account. Called ONLY after a verified success
+    // (server-confirmed PaymentIntent in live mode, or the simulated stub in demo mode).
+    private async Task FinalizeSuccessAsync(PaymentResult result)
+    {
+        var tx = new PaymentTransaction
+        {
+            MealMoneyAccountId = _selectedAccountId,
+            ParentUserId = _userId!,
+            Amount = _amount,
+            Status = result.Status,
+            InitiatedAt = DateTime.UtcNow,
+            CompletedAt = DateTime.UtcNow,
+            StripePaymentIntentId = result.PaymentIntentId,
+            Last4 = result.Last4,
+            CardBrand = result.CardBrand,
+        };
+        Db.PaymentTransactions.Add(tx);
+
+        var acct = await Db.MealMoneyAccounts.FindAsync(_selectedAccountId);
+        if (acct != null)
+        {
+            acct.Balance += _amount;
+            _successChildName = acct.FullName;
+        }
+
+        await Db.SaveChangesAsync();
+
+        _confirmationId = result.PaymentIntentId;
+        _step = 4;
     }
 
     private void ResetForm()
@@ -325,8 +455,14 @@
         _cardNumber = _cardExpiry = _cardCvc = string.Empty;
         _selectedAccountId = 0;
         _payError = _step1Error = _step2Error = null;
+        _clientSecret = _publishableKey = _paymentIntentId = null;
+        _liveMounted = false;
     }
 
     private string StepClass(int step) =>
         _step > step ? "step-done" : _step == step ? "step-active" : "step-inactive";
+
+    // JS interop shapes (Blazor binds camelCase JS fields case-insensitively).
+    private record JsResult(bool Ok, string? Error);
+    private record JsConfirm(string? Status, string? PaymentIntentId, string? Error);
 }
