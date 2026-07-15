@@ -49,6 +49,32 @@ if (!useSqlServer)
         Directory.CreateDirectory(dir);
 }
 
+// ─── Data Protection — keys MUST outlive the container ───────────────────────────────
+// ASP.NET encrypts antiforgery tokens and auth cookies with a Data Protection key ring.
+// By default that ring is written to ~/.aspnet/DataProtection-Keys INSIDE the container,
+// so every redeploy minted a brand-new ring and any token/cookie issued before it became
+// undecryptable — "The key {...} was not found in the key ring" — which surfaced as
+// HTTP 400 on every sign-in and registration POST. Persist the ring next to the database
+// on the volume, and pin the application name so the ring is found again after restart.
+// Path is configuration-driven (MiChoice:DataProtection:KeyPath); default sits beside
+// the configured SQLite file so it follows the volume automatically.
+var keyPath = builder.Configuration["MiChoice:DataProtection:KeyPath"];
+if (string.IsNullOrWhiteSpace(keyPath) && !useSqlServer)
+{
+    var dbDir = Path.GetDirectoryName(Path.GetFullPath(
+        new Microsoft.Data.Sqlite.SqliteConnectionStringBuilder(connStr).DataSource));
+    if (!string.IsNullOrWhiteSpace(dbDir))
+        keyPath = Path.Combine(dbDir, "dp-keys");
+}
+
+if (!string.IsNullOrWhiteSpace(keyPath))
+{
+    Directory.CreateDirectory(keyPath);
+    builder.Services.AddDataProtection()
+        .PersistKeysToFileSystem(new DirectoryInfo(keyPath))
+        .SetApplicationName("MiMealMoney");
+}
+
 // Identity
 builder.Services
     .AddIdentity<MealMoneyUser, IdentityRole>(options =>
