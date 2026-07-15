@@ -8,14 +8,46 @@ using MiChoice.MealMoney.Web.Components;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Database
-var dbProvider = builder.Configuration["DatabaseProvider"] ?? "Sqlite";
-var connStr = builder.Configuration.GetConnectionString("DefaultConnection")!;
+// ─── Database — provider AND connection are 100% configuration-driven ────────────────
+// Canonical section: MiChoice:Database (env MiChoice__Database__Provider /
+// MiChoice__Database__ConnectionString). Legacy DatabaseProvider +
+// ConnectionStrings:DefaultConnection stay honoured as a fallback.
+var dbOptions = builder.Configuration
+    .GetSection(DatabaseOptions.SectionName)
+    .Get<DatabaseOptions>() ?? new DatabaseOptions();
 
-if (dbProvider == "SqlServer")
+var dbProvider = !string.IsNullOrWhiteSpace(dbOptions.Provider)
+    ? dbOptions.Provider!
+    : builder.Configuration["DatabaseProvider"] ?? "Sqlite";
+
+var useSqlServer = string.Equals(dbProvider, "SqlServer", StringComparison.OrdinalIgnoreCase);
+
+var connStr = !string.IsNullOrWhiteSpace(dbOptions.ConnectionString)
+    ? dbOptions.ConnectionString!
+    : builder.Configuration.GetConnectionString("DefaultConnection");
+
+// Fail fast rather than silently opening a container-local file that is destroyed on
+// the next redeploy — that would quietly log every parent out mid-demo.
+if (string.IsNullOrWhiteSpace(connStr))
+    throw new InvalidOperationException(
+        $"No database connection string configured. Set '{DatabaseOptions.SectionName}:ConnectionString' " +
+        "(env MiChoice__Database__ConnectionString) or ConnectionStrings:DefaultConnection.");
+
+if (useSqlServer)
     builder.Services.AddDbContext<MealMoneyDbContext>(o => o.UseSqlServer(connStr));
 else
     builder.Services.AddDbContext<MealMoneyDbContext>(o => o.UseSqlite(connStr));
+
+// SQLite only: ensure the directory in the configured path exists, so the connection
+// string can point at a mounted volume (e.g. /data/miMealMoney.db) without the image
+// needing to know that path.
+if (!useSqlServer)
+{
+    var dataSource = new Microsoft.Data.Sqlite.SqliteConnectionStringBuilder(connStr).DataSource;
+    var dir = Path.GetDirectoryName(Path.GetFullPath(dataSource));
+    if (!string.IsNullOrWhiteSpace(dir))
+        Directory.CreateDirectory(dir);
+}
 
 // Identity
 builder.Services
@@ -87,10 +119,20 @@ app.Logger.LogInformation("MiMealMoney payment mode: {Mode}",
     stripeOptions.IsLive ? "LIVE Stripe (real charges)" : "Simulated stub (demo — no real charges)");
 
 // Ensure DB exists
+//
+// TODO (monolith track) — MOVE THIS STORE TO EF CORE MIGRATIONS.
+// EnsureCreated() creates the schema once and then never alters it. That was harmless
+// while this database was wiped on every redeploy, but it now lives on a persistent
+// volume, so ANY entity change from here on will NOT reach the existing database and
+// the app will fail at runtime on the missing column. michoice-api already does this
+// correctly (Add-Migration + Database.Migrate()); mirror that here when the monolith
+// work reaches this service. Until then, an entity change requires wiping the
+// database file on the volume.
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<MealMoneyDbContext>();
     db.Database.EnsureCreated();
+    app.Logger.LogInformation("MiMealMoney database provider: {Provider}", dbProvider);
 }
 
 if (!app.Environment.IsDevelopment())
