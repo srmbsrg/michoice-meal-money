@@ -4,11 +4,15 @@
 @using Microsoft.EntityFrameworkCore
 @using Microsoft.JSInterop
 @using System.Security.Claims
+@using MiChoice.MealMoney.Infrastructure.Services
+@using Microsoft.Extensions.Options
 @inject MealMoneyDbContext Db
 @inject IPaymentService PaymentSvc
 @inject IJSRuntime JS
 @inject AuthenticationStateProvider AuthState
 @inject NavigationManager Nav
+@inject IMiChoiceAccountService MiChoiceApi
+@inject IOptions<MiChoiceOptions> MiChoice
 
 <PageTitle>Make a Payment — MiMealMoney</PageTitle>
 
@@ -436,9 +440,34 @@
 
         var acct = await Db.MealMoneyAccounts.FindAsync(_selectedAccountId);
         if (acct != null)
+            _successChildName = acct.FullName;
+
+        // ── Where the money actually lands ────────────────────────────────────────
+        // SHARED (default): post a Deposit to michoice-api. The API writes the ledger
+        // row and Account.Balance in one DB transaction, so the register sees this
+        // money immediately — the parent app and the POS read the SAME balance.
+        // The local Balance is kept only as a display mirror of the authoritative value.
+        //
+        // DemoSeparate (MiChoice:UseSharedAccounts=false): legacy self-contained
+        // behaviour — credit this app's own table and nothing else.
+        if (MiChoice.Value.UseSharedAccounts && acct is not null && !string.IsNullOrWhiteSpace(acct.AccountNumber))
+        {
+            var deposit = await MiChoiceApi.DepositAsync(acct.AccountNumber, _amount, Guid.NewGuid());
+
+            if (!deposit.Success)
+            {
+                // Do NOT show a success screen for money that never reached the shared
+                // balance — that is exactly the drift this change exists to remove.
+                _payError = deposit.Error ?? "Payment could not be applied to the student's account.";
+                return;
+            }
+
+            acct.Balance      = deposit.NewBalance;  // mirror the authoritative shared value
+            acct.LastSyncedAt = DateTime.UtcNow;
+        }
+        else if (acct != null)
         {
             acct.Balance += _amount;
-            _successChildName = acct.FullName;
         }
 
         await Db.SaveChangesAsync();

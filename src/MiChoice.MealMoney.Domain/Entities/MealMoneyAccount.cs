@@ -4,6 +4,15 @@ public class MealMoneyAccount
 {
     public int Id { get; set; }
     public string StudentId { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Shared-identity anchor: the AccountNumber of this student's account in the
+    /// canonical district database (michoice-api). Populated when the parent links a
+    /// real student. Every shared money operation — deposits from this app, charges at
+    /// the register — keys on this value, which is what keeps the parent's view and the
+    /// POS on the same balance. Empty only for legacy/DemoSeparate rows.
+    /// </summary>
+    public string AccountNumber { get; set; } = string.Empty;
     public string FirstName { get; set; } = string.Empty;
     public string LastName { get; set; } = string.Empty;
     public string SchoolName { get; set; } = string.Empty;
