@@ -48,10 +48,30 @@ else
 
 // Application services
 builder.Services.AddScoped<IAgenticInsightService, MealMoneyInsightService>();
+
+// ─── Shared district system (michoice-api) — all configuration-driven ────────────────
+// MiChoice:UseSharedAccounts (default true) puts student lookup + parent deposits on the
+// SHARED Account.Balance the POS reads. Set it false for the legacy self-contained
+// "DemoSeparate" behaviour. MiChoice:ApiBaseUrl carries the address — never hardcoded.
+builder.Services.Configure<MiChoiceOptions>(builder.Configuration.GetSection(MiChoiceOptions.SectionName));
+var miChoiceOptions = builder.Configuration.GetSection(MiChoiceOptions.SectionName).Get<MiChoiceOptions>()
+                      ?? new MiChoiceOptions();
+
+// Legacy key kept as a fallback so existing installs keep resolving.
+var miChoiceApiBaseUrl = miChoiceOptions.ApiBaseUrl
+                         ?? builder.Configuration["MiChoiceApiBaseUrl"];
+
+if (miChoiceOptions.UseSharedAccounts && string.IsNullOrWhiteSpace(miChoiceApiBaseUrl))
+    throw new InvalidOperationException(
+        $"{MiChoiceOptions.SectionName}:UseSharedAccounts is true but no API base URL is configured. " +
+        $"Set {MiChoiceOptions.SectionName}:ApiBaseUrl (env MiChoice__ApiBaseUrl).");
+
 builder.Services.AddHttpClient("MiChoiceApi", c =>
 {
-    c.BaseAddress = new Uri(builder.Configuration["MiChoiceApiBaseUrl"] ?? "https://api.michoice.app");
+    c.BaseAddress = new Uri(miChoiceApiBaseUrl ?? "https://api.michoice.app");
+    c.Timeout     = TimeSpan.FromSeconds(20);
 });
+builder.Services.AddScoped<IMiChoiceAccountService, MiChoiceAccountService>();
 
 // Parent-facing school menu source (self-contained demo data, aligned with Manager vocab)
 builder.Services.AddSingleton<MiChoice.MealMoney.Web.Services.SchoolMenuService>();
