@@ -16,6 +16,11 @@
     <!-- Stripe.js + Payment Element interop — used only by live installs (real keys); harmless in demo mode. -->
     <script src="https://js.stripe.com/v3/"></script>
     <script src="/js/stripe-payment.js"></script>
-    <script src="_framework/blazor.server.js"></script>
+    @* Root-relative (leading slash) is REQUIRED. As a document-relative path this
+       resolved against the current route — on /auth/login it requested
+       /auth/_framework/blazor.server.js and 404'd, so Blazor never connected on ANY
+       nested page. The forms then degraded to plain HTML POSTs and were rejected by
+       UseAntiforgery() with HTTP 400 — i.e. sign-in and registration were dead. *@
+    <script src="/_framework/blazor.server.js"></script>
 </body>
 </html>
