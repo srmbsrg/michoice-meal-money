@@ -1,19 +1,30 @@
 namespace MiChoice.MealMoney.Web.Services;
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SchoolMenuService — the PARENT-FACING menu source (V, 2026-07-03).
-// Self-contained, read-only, in-memory demo data (singleton). No DB / no gateway.
+// SchoolMenuService — the PARENT-FACING menu source.
 //
-// The vocabulary here is deliberately ALIGNED with the MiChoice MANAGER module
-// (MiChoice.Office.Web ManagerStore): same campuses (Lincoln Elementary /
-// Jefferson Middle / Roosevelt High), same meal services (Breakfast / Lunch /
-// Snack / After School) and the same reimbursable-vs-à-la-carte item model — so
-// the story "a menu configured in Manager shows up here for parents" holds
-// visually end-to-end.
+// FABRICATED MENU ROTATIONS REMOVED (2026-07-16).
 //
-// HONEST SCOPE: true real-time cross-app menu sync needs the shared gateway /
-// backend (roadmap). For the demo this is aligned demo data, generated with a
-// deterministic per-campus rotation so every school day of any month is filled.
+// What this file used to be: ~190 lines of invented food. Four hand-written
+// rotations (5 breakfasts, 5 lunches, 3 snacks, 3 after-school suppers) — "Cheese
+// Pizza Day", "Taco Tuesday", "Whole-Grain Cheese Pizza 350 cal, allergens Wheat/
+// Milk" — indexed by (date.DayOfYear + campusOffset) % rotation.Length so that
+// EVERY school day of EVERY month, past or future, for every campus, rendered a
+// full menu with dish names, calorie counts, allergen lists and a-la-carte prices.
+//
+// None of it came from anywhere. There is no menu feed into this app: no DB, no
+// gateway call, no michoice-api client. A parent reading this calendar was reading
+// a rotation a developer typed, presented as their child's school menu — including
+// the allergen lists. The page's own footnote said "aligned demo data"; the
+// calendar cells did not.
+//
+// This service is now a SHELL that reports "no menu published" for every date, and
+// the calendar says so. It keeps the campus list (starter reference data) and the
+// shape of the API so the real wiring — michoice-api GET /api/v1/menus/today over
+// michoice-db MenuPlans, the same source michoice-office was pointed at — is a
+// small change rather than a rewrite.
+//
+// Do not re-add a rotation. A menu nobody published is not a menu.
 // ─────────────────────────────────────────────────────────────────────────────
 
 public enum MealService { Breakfast, Lunch, Snack, AfterSchool }
@@ -76,7 +87,7 @@ public class DailyMenu
 
 public class SchoolMenuService
 {
-    // Campuses — SAME names Manager (MiChoice.Office.Web) configures.
+    // Campus list. Starter reference data — no menus, no money, no counts.
     private readonly System.Collections.Generic.List<CampusInfo> _campuses = new()
     {
         new CampusInfo { Id = "Lincoln Elementary", Name = "Lincoln Elementary", Grades = "Grades K–5", Emoji = "🍎" },
@@ -89,101 +100,33 @@ public class SchoolMenuService
         _campuses.Find(c => string.Equals(c.Id, id, System.StringComparison.OrdinalIgnoreCase));
     public MealService[] Services => MealServiceX.All;
 
-    // A school day = Mon–Fri (weekends closed in the demo).
+    /// <summary>True if the district operates on this date (Mon–Fri).</summary>
     public bool IsSchoolDay(System.DateOnly d) =>
         d.DayOfWeek != System.DayOfWeek.Saturday && d.DayOfWeek != System.DayOfWeek.Sunday;
 
-    // ---- dish factories (à-la-carte prices aligned with Manager seed items) ----
-    private static MenuDish Meal(string name, int cal, bool veg, params string[] allergens) =>
-        new() { Name = name, Category = "Entrée", IsReimbursable = true, Price = 0m, Calories = cal, Vegetarian = veg, Allergens = allergens };
-    private static MenuDish Side(string name, int cal, bool veg, params string[] allergens) =>
-        new() { Name = name, Category = "Side", IsReimbursable = true, Price = 0m, Calories = cal, Vegetarian = veg, Allergens = allergens };
-    private static MenuDish Fruit(string name, int cal) =>
-        new() { Name = name, Category = "Fruit", IsReimbursable = true, Price = 0m, Calories = cal, Vegetarian = true };
-    private static MenuDish Milk =>
-        new() { Name = "Milk", Category = "Drink", IsReimbursable = true, Price = 0.50m, Calories = 100, Vegetarian = true, Allergens = new[] { "Milk" } };
-    private static MenuDish Alc(string name, string cat, decimal price, int cal, bool veg, params string[] allergens) =>
-        new() { Name = name, Category = cat, IsReimbursable = false, Price = price, Calories = cal, Vegetarian = veg, Allergens = allergens };
+    /// <summary>
+    /// True when this app has a menu source wired up at all. It does not — there is no
+    /// michoice-api client in this project. The UI reads this to explain WHY every day is
+    /// empty ("not connected yet") instead of implying the district published nothing.
+    /// Flip this when the real feed lands; do not flip it to make the screen look better.
+    /// </summary>
+    public bool MenuFeedConnected => false;
 
-    private sealed record Day(string Title, System.Func<System.Collections.Generic.List<MenuDish>> Build);
-
-    // shared à-la-carte extras offered every day (matches Manager: Milk/Cookie/Water)
-    private static void AddExtras(System.Collections.Generic.List<MenuDish> d)
-    {
-        d.Add(Alc("Cookie", "Snack", 1.00m, 160, true, "Wheat", "Egg", "Milk"));
-        d.Add(Alc("Bottled Water", "Drink", 1.25m, 0, true));
-    }
-
-    // ---- BREAKFAST rotation ----
-    private static readonly Day[] Breakfasts =
-    {
-        new("Warm Pancakes", () => new() { Meal("Whole-Grain Pancakes & Syrup", 290, true, "Wheat", "Egg", "Milk"), Fruit("Fresh Banana", 90), Milk }),
-        new("Breakfast Burrito", () => new() { Meal("Egg & Cheese Breakfast Burrito", 320, true, "Wheat", "Egg", "Milk"), Fruit("Diced Peaches", 60), Milk }),
-        new("Cereal & Yogurt", () => new() { Meal("Whole-Grain Cereal", 210, true, "Wheat"), Side("Vanilla Yogurt Cup", 90, true, "Milk"), Fruit("Fresh Apple", 80), Milk }),
-        new("Bagel Morning", () => new() { Meal("Whole-Grain Bagel & Cream Cheese", 300, true, "Wheat", "Milk"), Fruit("Orange Wedges", 70), Milk }),
-        new("Oatmeal Bar", () => new() { Meal("Cinnamon Oatmeal", 230, true, "Wheat"), Side("Blueberry Muffin", 190, true, "Wheat", "Egg", "Milk"), Fruit("Fresh Banana", 90), Milk }),
-    };
-
-    // ---- LUNCH rotation (entrée names align with typical Manager 'Reimbursable Lunch') ----
-    private static readonly Day[] Lunches =
-    {
-        new("Cheese Pizza Day", () => new() { Meal("Whole-Grain Cheese Pizza", 350, true, "Wheat", "Milk"), Side("Garden Salad", 35, true), Fruit("Fresh Apple", 80), Milk }),
-        new("Chicken Nuggets", () => new() { Meal("Baked Chicken Nuggets", 300, false, "Wheat"), Side("Roasted Corn", 80, true), Fruit("Pineapple Cup", 70), Milk }),
-        new("Taco Tuesday", () => new() { Meal("Beef & Cheese Soft Taco", 340, false, "Wheat", "Milk"), Side("Seasoned Black Beans", 110, true), Fruit("Orange Wedges", 70), Milk }),
-        new("Turkey Sandwich", () => new() { Meal("Turkey & Cheese Sandwich", 330, false, "Wheat", "Milk"), Side("Baby Carrots & Ranch", 90, true, "Milk"), Fruit("Diced Pears", 60), Milk }),
-        new("Spaghetti Day", () => new() { Meal("Spaghetti with Marinara", 360, true, "Wheat"), Side("Steamed Green Beans", 45, true), Fruit("Fresh Banana", 90), Milk }),
-    };
-
-    // ---- SNACK rotation ----
-    private static readonly Day[] Snacks =
-    {
-        new("Fruit & Cheese", () => new() { Meal("Apple Slices & Cheese Stick", 150, true, "Milk"), Milk }),
-        new("Graham & Yogurt", () => new() { Meal("Graham Crackers & Yogurt", 180, true, "Wheat", "Milk"), Fruit("Raisins", 90) }),
-        new("Veggie Cup", () => new() { Meal("Veggie Cup & Hummus", 140, true, "Wheat"), Fruit("Fresh Orange", 70) }),
-    };
-
-    // ---- AFTER SCHOOL rotation ----
-    private static readonly Day[] AfterSchools =
-    {
-        new("Supper: Chicken Wrap", () => new() { Meal("Grilled Chicken Wrap", 340, false, "Wheat", "Milk"), Side("Cucumber Slices", 20, true), Fruit("Fresh Apple", 80), Milk }),
-        new("Supper: Cheese Quesadilla", () => new() { Meal("Cheese Quesadilla", 320, true, "Wheat", "Milk"), Side("Salsa & Corn", 90, true), Fruit("Orange Wedges", 70), Milk }),
-        new("Supper: Sun Butter Sandwich", () => new() { Meal("Sun Butter & Jelly Sandwich", 360, true, "Wheat"), Side("Celery Sticks", 15, true), Fruit("Fresh Banana", 90), Milk }),
-    };
-
-    private static Day[] Rotation(MealService s) => s switch
-    {
-        MealService.Breakfast   => Breakfasts,
-        MealService.Lunch       => Lunches,
-        MealService.Snack       => Snacks,
-        MealService.AfterSchool => AfterSchools,
-        _                       => Lunches,
-    };
-
-    private int CampusOffset(string? campusId)
-    {
-        var idx = _campuses.FindIndex(c => string.Equals(c.Id, campusId, System.StringComparison.OrdinalIgnoreCase));
-        return idx < 0 ? 0 : idx;
-    }
-
-    // Deterministic per-campus, per-service, per-date lookup — every school day filled.
-    public DailyMenu MenuFor(string? campusId, MealService service, System.DateOnly date)
-    {
-        if (!IsSchoolDay(date))
-            return new DailyMenu { Date = date, Service = service, IsSchoolDay = false };
-
-        var rot = Rotation(service);
-        var offset = CampusOffset(campusId) * 2 + (int)service;
-        var i = ((date.DayOfYear + offset) % rot.Length + rot.Length) % rot.Length;
-        var day = rot[i];
-        var dishes = day.Build();
-        AddExtras(dishes);
-        return new DailyMenu
+    /// <summary>
+    /// The published menu for a campus/service/date, or an empty DailyMenu when none exists.
+    ///
+    /// Always returns empty today: nothing publishes into this app yet. It used to return a
+    /// deterministic rotation of invented dishes for every school day ever — see the header.
+    /// When the michoice-api feed is wired in, query it here and return what it actually
+    /// published. If it publishes nothing for a date, return empty for that date.
+    /// </summary>
+    public DailyMenu MenuFor(string? campusId, MealService service, System.DateOnly date) =>
+        new()
         {
-            Date = date,
-            Service = service,
-            IsSchoolDay = true,
-            Title = day.Title,
-            Dishes = dishes,
+            Date        = date,
+            Service     = service,
+            IsSchoolDay = IsSchoolDay(date),
+            Title       = null,
+            Dishes      = new(),
         };
-    }
 }

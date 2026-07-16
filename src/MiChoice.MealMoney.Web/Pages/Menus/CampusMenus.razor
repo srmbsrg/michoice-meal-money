@@ -45,7 +45,7 @@
 
             <div class="hotlink-note">
                 <i class="bi bi-info-circle me-1"></i>
-                Menus are aligned with what your district configures in MiChoice Manager.
+                Menus come from what your district publishes in MiChoice Manager.
             </div>
         </div>
 
@@ -142,9 +142,13 @@
                                     }
                                 </div>
                             }
-                            else
+                            else if (!Menus.IsSchoolDay(date))
                             {
                                 <div class="cal-nomenu">No service</div>
+                            }
+                            else
+                            {
+                                <div class="cal-nomenu">No menu published</div>
                             }
                         }
                     </div>
@@ -165,9 +169,15 @@
                     <button class="btn-close" @onclick="() => _selected = null" aria-label="Close"></button>
                 </div>
 
-                @if (!dm.HasMenu)
+                @if (!dm.IsSchoolDay)
                 {
                     <div class="text-muted py-3"><i class="bi bi-calendar-x me-1"></i>No @_service.Label().ToLower() service on this day.</div>
+                }
+                else if (!dm.HasMenu)
+                {
+                    <div class="text-muted py-3">
+                        <i class="bi bi-calendar-x me-1"></i>No @_service.Label().ToLower() menu published for this day.
+                    </div>
                 }
                 else
                 {
@@ -215,13 +225,15 @@
             </div>
         }
 
-        <div class="roadmap-note mt-4">
-            <i class="bi bi-info-circle me-1"></i>
-            <strong>How this connects:</strong> menus, items and meal services use the same vocabulary the
-            <em>MiChoice Manager</em> module configures, so a menu set by the district appears here for families.
-            Live real-time cross-app sync runs over the shared MiChoice gateway — <span class="text-muted">coming soon</span>;
-            this preview uses aligned demo data.
-        </div>
+        @if (!Menus.MenuFeedConnected)
+        {
+            <div class="roadmap-note mt-4" style="border-left:4px solid #b54708;background:#fffaf0">
+                <i class="bi bi-exclamation-triangle me-1"></i>
+                <strong>Menus aren't connected yet.</strong> This calendar is empty for every day because
+                MiMealMoney has no menu feed from the district — not because your school hasn't published
+                a menu. Until the feed is connected, please check with your school office for menus.
+            </div>
+        }
     }
     </div><!-- /main col -->
 </div><!-- /row -->

@@ -48,7 +48,15 @@
                 <i class="bi bi-search me-1"></i>Search
             </button>
 
-            @if (_searched && !_results.Any())
+            @if (_searched && !_results.Any() && !MiChoice.Value.UseSharedAccounts)
+            {
+                <div class="alert alert-warning mt-4">
+                    <strong>Student lookup isn't connected.</strong> This site can't search the district
+                    roster right now, so it can't find your child — this is not a result about your child.
+                    Please contact your school office to link an account.
+                </div>
+            }
+            else if (_searched && !_results.Any())
             {
                 <div class="alert alert-info mt-4">No students found matching that name and school. Please check the details and try again.</div>
             }
@@ -137,20 +145,20 @@
                     LastSyncedAt  = DateTime.UtcNow
                 }));
             }
-            else if (!string.IsNullOrWhiteSpace(_firstName) && !string.IsNullOrWhiteSpace(_lastName))
-            {
-                // DemoSeparate: self-contained demo with no shared district system.
-                _results.Add(new MealMoneyAccount
-                {
-                    StudentId = Guid.NewGuid().ToString("N")[..8],
-                    FirstName = _firstName.Trim(),
-                    LastName = _lastName.Trim(),
-                    SchoolName = string.IsNullOrWhiteSpace(_schoolName) ? "Unknown School" : _schoolName.Trim(),
-                    Grade = 3,
-                    Balance = 12.50m,
-                    LastSyncedAt = DateTime.UtcNow
-                });
-            }
+            // ── "DemoSeparate" FABRICATED MATCH REMOVED (2026-07-16) ──────────────
+            // When MiChoice:UseSharedAccounts was false, this branch INVENTED the child.
+            // Whatever name the parent typed came straight back as a confirmed district
+            // student — random 8-char StudentId, "Grade 3", "Unknown School", and a
+            // $12.50 balance — and the parent could then link to it. Search always
+            // succeeded, for any name, including a child not enrolled anywhere.
+            //
+            // That is a fabricated identity attached to a fabricated balance in a
+            // parent-facing money app. The comment on the shared branch above notes the
+            // stub was replaced there "which could never reach the POS" — it was left
+            // running here.
+            //
+            // There is no offline mode for student lookup. Without the shared roster this
+            // app cannot know whether a child exists, and it now says so.
         }
         finally
         {
